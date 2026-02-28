@@ -1,6 +1,9 @@
 //! Inspector panel: bridges bevy-inspector-egui for entity inspection.
 
+use bevy::ecs::observer::Observer;
+use bevy::picking::pointer::PointerId;
 use bevy::prelude::*;
+use bevy::window::Monitor;
 use bevy_inspector_egui::bevy_inspector::{
     self,
     hierarchy::{Hierarchy, SelectedEntities},
@@ -99,5 +102,23 @@ impl WorkbenchPanel for InspectorPanel {
 
     fn closable(&self) -> bool {
         true
+    }
+}
+
+/// Marks Bevy-internal entities (Window, Monitor, Pointer, Observer) with
+/// [`WorkbenchInternal`] so the inspector hides them by default.
+#[allow(clippy::type_complexity)]
+pub fn mark_internal_entities_system(
+    mut commands: Commands,
+    unmarked: Query<
+        Entity,
+        (
+            Or<(With<Window>, With<Monitor>, With<PointerId>, With<Observer>)>,
+            Without<WorkbenchInternal>,
+        ),
+    >,
+) {
+    for entity in &unmarked {
+        commands.entity(entity).insert(WorkbenchInternal);
     }
 }

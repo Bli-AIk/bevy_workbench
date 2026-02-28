@@ -100,6 +100,7 @@ impl Plugin for WorkbenchPlugin {
             .add_systems(Update, undo::undo_input_system)
             .add_systems(PreUpdate, assign_primary_egui_context_system)
             .add_systems(PreUpdate, console::console_drain_system)
+            .add_systems(PreUpdate, inspector::mark_internal_entities_system)
             // UI systems must run in EguiPrimaryContextPass (bevy_egui 0.39 multi-pass mode)
             .add_systems(
                 EguiPrimaryContextPass,

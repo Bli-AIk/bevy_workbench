@@ -60,11 +60,10 @@ impl Plugin for WorkbenchPlugin {
             .insert_resource(mode::ModeController::default())
             .insert_resource(undo::UndoStack::default())
             .insert_resource(layout::LayoutState::new(self.config.layout))
-            .insert_resource(dock::DockLayoutState::default())
+            .insert_resource(dock::TileLayoutState::default())
             .insert_resource(console::ConsoleState::default())
             .insert_resource(inspector::InspectorSelection::default())
             .insert_resource(theme::ThemeState::default())
-            .add_plugins(game_view::GameViewPlugin)
             .add_systems(Update, layout::detect_layout_system)
             .add_systems(Update, mode::mode_input_system)
             .add_systems(Update, undo::undo_input_system)
@@ -74,7 +73,7 @@ impl Plugin for WorkbenchPlugin {
                 (
                     theme::apply_theme_system,
                     menu_bar::menu_bar_system,
-                    dock::dock_ui_system,
+                    dock::tiles_ui_system,
                 )
                     .chain(),
             );
@@ -96,11 +95,11 @@ pub trait WorkbenchApp {
 
 impl WorkbenchApp for App {
     fn register_panel(&mut self, panel: impl dock::WorkbenchPanel) -> &mut Self {
-        let mut dock_state = self
+        let mut tile_state = self
             .world_mut()
-            .get_resource_mut::<dock::DockLayoutState>()
+            .get_resource_mut::<dock::TileLayoutState>()
             .expect("WorkbenchPlugin must be added before registering panels");
-        dock_state.add_panel(Box::new(panel));
+        tile_state.add_panel(Box::new(panel));
         self
     }
 }

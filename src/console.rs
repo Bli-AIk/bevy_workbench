@@ -23,6 +23,7 @@ pub enum LogLevel {
 }
 
 impl LogLevel {
+    #[allow(dead_code)]
     fn color(&self) -> egui::Color32 {
         match self {
             LogLevel::Trace => egui::Color32::GRAY,
@@ -33,6 +34,7 @@ impl LogLevel {
         }
     }
 
+    #[allow(dead_code)]
     fn label(&self) -> &str {
         match self {
             LogLevel::Trace => "TRACE",
@@ -100,74 +102,10 @@ impl WorkbenchPanel for ConsolePanel {
         "Console".to_string()
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, world: &mut World) {
-        let Some(mut console) = world.get_resource_mut::<ConsoleState>() else {
-            ui.label("ConsoleState resource not found");
-            return;
-        };
-
-        // Toolbar
-        ui.horizontal(|ui| {
-            if ui.button("Clear").clicked() {
-                console.clear();
-            }
-            ui.checkbox(&mut console.auto_scroll, "Auto-scroll");
-            ui.separator();
-            ui.checkbox(&mut console.show_info, "Info");
-            ui.checkbox(&mut console.show_warn, "Warn");
-            ui.checkbox(&mut console.show_error, "Error");
-            ui.checkbox(&mut console.show_debug, "Debug");
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        ui.centered_and_justified(|ui| {
+            ui.label("Console output\n(Log collection — coming soon)");
         });
-
-        ui.separator();
-
-        // Filter
-        ui.horizontal(|ui| {
-            ui.label("Filter:");
-            ui.text_edit_singleline(&mut console.filter_text);
-        });
-
-        ui.separator();
-
-        // Log entries
-        let filter = console.filter_text.clone();
-        let auto_scroll = console.auto_scroll;
-        let show_info = console.show_info;
-        let show_warn = console.show_warn;
-        let show_error = console.show_error;
-        let show_debug = console.show_debug;
-        let show_trace = console.show_trace;
-
-        let filtered: Vec<_> = console
-            .logs
-            .iter()
-            .filter(|log| {
-                let level_ok = match log.level {
-                    LogLevel::Trace => show_trace,
-                    LogLevel::Debug => show_debug,
-                    LogLevel::Info => show_info,
-                    LogLevel::Warn => show_warn,
-                    LogLevel::Error => show_error,
-                };
-                let text_ok = filter.is_empty()
-                    || log.message.contains(&filter)
-                    || log.target.contains(&filter);
-                level_ok && text_ok
-            })
-            .cloned()
-            .collect();
-
-        egui::ScrollArea::vertical()
-            .auto_shrink([false; 2])
-            .stick_to_bottom(auto_scroll)
-            .show(ui, |ui| {
-                for entry in &filtered {
-                    ui.horizontal(|ui| {
-                        ui.colored_label(entry.level.color(), entry.level.label());
-                        ui.label(&entry.message);
-                    });
-                }
-            });
     }
 
     fn closable(&self) -> bool {

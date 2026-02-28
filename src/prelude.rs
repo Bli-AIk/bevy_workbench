@@ -5,7 +5,7 @@ pub use crate::WorkbenchConfig;
 pub use crate::WorkbenchPlugin;
 pub use crate::bench_ui;
 pub use crate::console::ConsolePanel;
-pub use crate::dock::{DockLayoutState, WorkbenchPanel};
+pub use crate::dock::{PanelSlot, TileLayoutState, WorkbenchPanel};
 pub use crate::game_view::{GameViewGesture, GameViewPanel, GameViewState, ZoomMode};
 pub use crate::inspector::InspectorPanel;
 pub use crate::layout::{LayoutMode, LayoutState};

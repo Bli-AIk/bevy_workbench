@@ -22,20 +22,10 @@ impl WorkbenchPanel for InspectorPanel {
         "Inspector".to_string()
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, world: &mut World) {
-        let selected = world
-            .get_resource::<InspectorSelection>()
-            .and_then(|s| s.selected);
-
-        if let Some(entity) = selected {
-            ui.heading(format!("Entity {:?}", entity));
-            ui.separator();
-            bevy_inspector_egui::bevy_inspector::ui_for_entity(world, entity, ui);
-        } else {
-            ui.centered_and_justified(|ui| {
-                ui.label("No entity selected");
-            });
-        }
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        ui.centered_and_justified(|ui| {
+            ui.label("No entity selected\n(Inspector requires ECS access — coming soon)");
+        });
     }
 
     fn closable(&self) -> bool {

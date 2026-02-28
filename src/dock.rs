@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 /// Trait for user-defined editor panels.
-pub trait WorkbenchPanel: Send + Sync + 'static {
+pub trait WorkbenchPanel: Send + Sync + std::any::Any + 'static {
     /// Unique panel identifier.
     fn id(&self) -> &str;
 
@@ -60,6 +60,10 @@ pub struct TileLayoutState {
     pending: Vec<PendingPanel>,
     next_id: PanelId,
     tree_built: bool,
+    /// Maps panel string IDs to PanelIds for lookup.
+    pub(crate) panel_id_map: HashMap<String, PanelId>,
+    /// Maps PanelIds to TileIds in the tree (for visibility control).
+    pub(crate) panel_tile_map: HashMap<PanelId, egui_tiles::TileId>,
 }
 
 impl TileLayoutState {
@@ -96,8 +100,11 @@ impl TileLayoutState {
 
         for pending in self.pending.drain(..) {
             let id = self.panels.len();
+            let str_id = pending.panel.id().to_string();
             self.panels.insert(id, pending.panel);
+            self.panel_id_map.insert(str_id, id);
             let tile_id = tiles.insert_pane(PaneEntry { panel_id: id });
+            self.panel_tile_map.insert(id, tile_id);
             match pending.slot {
                 PanelSlot::Left => left_panes.push(tile_id),
                 PanelSlot::Center => center_panes.push(tile_id),
@@ -180,11 +187,80 @@ impl TileLayoutState {
             Some(tiles.insert_tab_tile(panes))
         }
     }
+
+    /// Focus an existing panel tab by its string ID, re-inserting if closed.
+    pub fn open_or_focus_panel(&mut self, panel_str_id: &str) {
+        let Some(&panel_id) = self.panel_id_map.get(panel_str_id) else {
+            return;
+        };
+        let Some(&tile_id) = self.panel_tile_map.get(&panel_id) else {
+            return;
+        };
+        let Some(tree) = &mut self.tree else { return };
+
+        // Check if this tile is still in a container
+        if tree.tiles.get(tile_id).is_some() {
+            // Tile exists, make sure it's visible
+            tree.tiles.set_visible(tile_id, true);
+        } else {
+            // Tile was removed — re-insert the pane entry
+            let new_tile_id = tree.tiles.insert_pane(PaneEntry { panel_id });
+            self.panel_tile_map.insert(panel_id, new_tile_id);
+
+            // Find the root and insert into it
+            if let Some(root_id) = tree.root() {
+                tree.move_tile_to_container(new_tile_id, root_id, usize::MAX, false);
+            } else {
+                // No root — make this the root
+                tree.root = Some(new_tile_id);
+            }
+        }
+    }
+
+    /// Close a panel by removing its tile from the tree entirely.
+    pub fn hide_tile(&mut self, tile_id: egui_tiles::TileId) {
+        if let Some(tree) = &mut self.tree {
+            tree.tiles.remove(tile_id);
+        }
+    }
+
+    /// Returns list of (panel_str_id, title, is_visible) for building the Window menu.
+    pub fn panel_list(&self) -> Vec<(String, String, bool)> {
+        let mut result = Vec::new();
+        for (str_id, &panel_id) in &self.panel_id_map {
+            let title = self
+                .panels
+                .get(&panel_id)
+                .map(|p| p.title())
+                .unwrap_or_default();
+            let visible = self
+                .panel_tile_map
+                .get(&panel_id)
+                .and_then(|&tid| self.tree.as_ref().map(|t| t.tiles.get(tid).is_some()))
+                .unwrap_or(false);
+            result.push((str_id.clone(), title, visible));
+        }
+        result.sort_by(|a, b| a.1.cmp(&b.1));
+        result
+    }
+
+    /// Get a mutable reference to a panel by its string ID, with downcasting.
+    pub fn get_panel_mut<T: WorkbenchPanel + 'static>(
+        &mut self,
+        panel_str_id: &str,
+    ) -> Option<&mut T> {
+        let panel_id = self.panel_id_map.get(panel_str_id)?;
+        let panel = self.panels.get_mut(panel_id)?;
+        // Downcast via Any
+        (panel.as_mut() as &mut dyn std::any::Any).downcast_mut::<T>()
+    }
 }
 
 /// Adapter between egui_tiles::Behavior and our WorkbenchPanel system.
 struct WorkbenchBehavior<'a> {
     panels: &'a mut HashMap<PanelId, Box<dyn WorkbenchPanel>>,
+    /// Tile IDs to remove from the tree after the UI pass.
+    tiles_to_remove: Vec<egui_tiles::TileId>,
 }
 
 impl egui_tiles::Behavior<PaneEntry> for WorkbenchBehavior<'_> {
@@ -206,6 +282,39 @@ impl egui_tiles::Behavior<PaneEntry> for WorkbenchBehavior<'_> {
             panel.ui(ui);
         }
         egui_tiles::UiResponse::None
+    }
+
+    fn is_tab_closable(
+        &self,
+        _tiles: &egui_tiles::Tiles<PaneEntry>,
+        _tile_id: egui_tiles::TileId,
+    ) -> bool {
+        true
+    }
+
+    fn on_tab_close(
+        &mut self,
+        _tiles: &mut egui_tiles::Tiles<PaneEntry>,
+        tile_id: egui_tiles::TileId,
+    ) -> bool {
+        self.tiles_to_remove.push(tile_id);
+        true // return true = remove the tile from its parent
+    }
+
+    fn on_tab_button(
+        &mut self,
+        _tiles: &egui_tiles::Tiles<PaneEntry>,
+        tile_id: egui_tiles::TileId,
+        button_response: egui::Response,
+    ) -> egui::Response {
+        // Right-click context menu
+        button_response.context_menu(|ui| {
+            if ui.button("Close").clicked() {
+                self.tiles_to_remove.push(tile_id);
+                ui.close();
+            }
+        });
+        button_response
     }
 
     fn simplification_options(&self) -> egui_tiles::SimplificationOptions {
@@ -231,7 +340,13 @@ pub fn tiles_ui_system(mut contexts: bevy_egui::EguiContexts, mut state: ResMut<
     egui::CentralPanel::default().show(ctx, |ui| {
         let mut behavior = WorkbenchBehavior {
             panels: &mut state.panels,
+            tiles_to_remove: Vec::new(),
         };
         tree.ui(&mut behavior, ui);
+
+        // Remove tiles that were closed (right-click or X button)
+        for tile_id in behavior.tiles_to_remove {
+            tree.tiles.remove(tile_id);
+        }
     });
 }

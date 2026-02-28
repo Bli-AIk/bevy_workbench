@@ -11,6 +11,7 @@
 //! - No scene hierarchy by default
 
 pub mod bench_ui;
+pub mod config;
 pub mod console;
 pub mod dock;
 pub mod game_view;
@@ -55,7 +56,13 @@ impl Plugin for WorkbenchPlugin {
             app.add_plugins(EguiPlugin::default());
         }
 
+        // Load or create config (project-local)
+        let config_path = config::ConfigPath::default();
+        let settings = config::WorkbenchSettings::load(&config_path.0);
+
         app.insert_resource(self.config.clone())
+            .insert_resource(settings.clone())
+            .insert_resource(config_path)
             .init_state::<mode::EditorMode>()
             .insert_resource(mode::ModeController::default())
             .insert_resource(undo::UndoStack::default())
@@ -71,6 +78,7 @@ impl Plugin for WorkbenchPlugin {
             .add_systems(
                 EguiPrimaryContextPass,
                 (
+                    config::config_apply_system,
                     theme::apply_theme_system,
                     menu_bar::menu_bar_system,
                     dock::tiles_ui_system,
@@ -84,6 +92,12 @@ impl Plugin for WorkbenchPlugin {
         if self.config.show_console {
             app.register_panel(console::ConsolePanel);
         }
+        // Settings panel initialized with loaded scale
+        let settings_panel = menu_bar::SettingsPanel {
+            edited_scale: settings.ui_scale,
+            ..Default::default()
+        };
+        app.register_panel(settings_panel);
     }
 }
 

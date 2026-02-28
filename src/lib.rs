@@ -87,6 +87,7 @@ impl Plugin for WorkbenchPlugin {
             .init_resource::<console::ConsoleState>()
             .insert_resource(inspector::InspectorSelection::default())
             .init_resource::<inspector::InspectorUndoState>()
+            .init_resource::<menu_bar::KeyRecordState>()
             .insert_resource(theme::ThemeState {
                 config: settings.theme.clone(),
                 ..Default::default()

@@ -1,0 +1,17 @@
+[package]
+name = "bevy_workbench"
+version = "0.1.0"
+edition = "2024"
+authors = ["Bli-AIk <haikun2333@gmail.com>"]
+license = "MIT OR Apache-2.0"
+description = "A mid-level editor scaffold for Bevy, between bevy-inspector-egui and Unity/Godot"
+
+[dependencies]
+bevy = "0.18"
+bevy_egui = { version = "0.39", features = ["render"] }
+bevy-inspector-egui = "0.36"
+egui_dock = "0.18"
+egui = "0.33"
+
+[dev-dependencies]
+bevy = "0.18"

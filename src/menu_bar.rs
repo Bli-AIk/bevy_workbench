@@ -62,7 +62,7 @@ pub fn menu_bar_system(
                     } else {
                         egui::RichText::new(title).weak()
                     };
-                    if ui.selectable_label(*visible, text).clicked() {
+                    if ui.button(text).clicked() {
                         if *visible {
                             if let Some(&panel_id) = tile_state.panel_id_map.get(str_id.as_str())
                                 && let Some(&tile_id) = tile_state.panel_tile_map.get(&panel_id)

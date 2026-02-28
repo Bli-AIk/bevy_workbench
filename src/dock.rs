@@ -597,11 +597,20 @@ pub fn tiles_ui_system(world: &mut World) {
         }
         if state.layout_reset_requested {
             state.layout_reset_requested = false;
+            let before = state.snapshot();
             state.tree = None;
             state.panel_tile_map.clear();
             state.build_default_tree();
+            let after = state.snapshot();
             let _ = std::fs::remove_file(&layout_path.0);
             info!("Layout reset to default");
+
+            // Record undo for layout reset
+            if let (Some(before), Some(after)) = (before, after)
+                && let Some(mut undo_stack) = world.get_resource_mut::<crate::undo::UndoStack>()
+            {
+                undo_stack.push(LayoutUndoAction::new("Reset layout", before, after));
+            }
         }
     });
 
@@ -618,10 +627,10 @@ pub fn tiles_ui_system(world: &mut World) {
         ctx
     };
 
-    // Phase 3: Temporarily take tree+panels out of resource so we can pass &mut World
-    let (mut tree, mut panels) = {
-        let mut state = world.resource_mut::<TileLayoutState>();
-        (state.tree.take(), std::mem::take(&mut state.panels))
+    // Phase 3: Snapshot layout BEFORE extracting tree (for close undo)
+    let before_snapshot = {
+        let state = world.resource::<TileLayoutState>();
+        state.snapshot()
     };
 
     // Build reverse map before world is borrowed by behavior
@@ -630,10 +639,10 @@ pub fn tiles_ui_system(world: &mut World) {
         state.tile_to_panel_str_id_map()
     };
 
-    // Snapshot layout before any modifications (for undo)
-    let before_snapshot = {
-        let state = world.resource::<TileLayoutState>();
-        state.snapshot()
+    // Temporarily take tree+panels out of resource so we can pass &mut World
+    let (mut tree, mut panels) = {
+        let mut state = world.resource_mut::<TileLayoutState>();
+        (state.tree.take(), std::mem::take(&mut state.panels))
     };
 
     let mut closed_panel_ids: Vec<String> = Vec::new();

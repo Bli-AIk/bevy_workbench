@@ -4,7 +4,7 @@
 //! Game entities are spawned on Play and auto-despawned on Stop.
 
 use bevy::prelude::*;
-use bevy::state::prelude::DespawnOnExit;
+use bevy::state::prelude::DespawnOnEnter;
 use bevy_workbench::prelude::*;
 
 fn main() {
@@ -46,8 +46,8 @@ fn setup_game(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    // All game entities are marked with DespawnOnExit — auto-cleanup on Stop
-    let cleanup = DespawnOnExit(EditorMode::Play);
+    // All game entities are marked with DespawnOnEnter(Edit) — auto-cleanup on Stop
+    let cleanup = DespawnOnEnter(EditorMode::Edit);
 
     // Circle — bounces up and down
     commands.spawn((

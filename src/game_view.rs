@@ -3,7 +3,7 @@
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
-use bevy::state::prelude::DespawnOnExit;
+use bevy::state::prelude::DespawnOnEnter;
 
 use crate::dock::{TileLayoutState, WorkbenchPanel};
 use crate::mode::EditorMode;
@@ -66,7 +66,7 @@ fn spawn_game_view_camera(mut commands: Commands, state: Res<GameViewState>) {
         },
         RenderTarget::from(state.render_target.clone()),
         GameViewCamera,
-        DespawnOnExit(EditorMode::Play),
+        DespawnOnEnter(EditorMode::Edit),
     ));
 }
 
@@ -75,6 +75,7 @@ pub fn game_view_sync_system(
     mut state: ResMut<GameViewState>,
     mut contexts: bevy_egui::EguiContexts,
     mut tile_state: ResMut<TileLayoutState>,
+    mode: Res<State<EditorMode>>,
 ) {
     // Register texture with egui (once)
     if state.egui_texture_id.is_none() && state.render_target != Handle::default() {
@@ -84,10 +85,13 @@ pub fn game_view_sync_system(
         state.egui_texture_id = Some(texture_id);
     }
 
-    // Sync texture ID and resolution to the panel
+    let is_playing = matches!(mode.get(), EditorMode::Play | EditorMode::Pause);
+
+    // Sync state to the panel
     if let Some(panel) = tile_state.get_panel_mut::<GameViewPanel>("workbench_game_view") {
         panel.egui_texture_id = state.egui_texture_id;
         panel.resolution = state.resolution;
+        panel.is_playing = is_playing;
     }
 }
 
@@ -98,6 +102,8 @@ pub struct GameViewPanel {
     pub egui_texture_id: Option<egui::TextureId>,
     /// Resolution of the render target (for aspect-ratio scaling).
     pub resolution: UVec2,
+    /// Whether the game is currently playing (has a camera rendering).
+    pub is_playing: bool,
 }
 
 impl WorkbenchPanel for GameViewPanel {
@@ -110,6 +116,13 @@ impl WorkbenchPanel for GameViewPanel {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui) {
+        if !self.is_playing {
+            ui.centered_and_justified(|ui| {
+                ui.label("Press Play to Start Game");
+            });
+            return;
+        }
+
         if let Some(tex_id) = self.egui_texture_id {
             let available = ui.available_size();
             let res = if self.resolution.x > 0 && self.resolution.y > 0 {

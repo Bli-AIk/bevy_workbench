@@ -39,3 +39,13 @@ game-view-press-play = Press Play to Start Game
 # File dialogs
 dialog-save-layout = Save Layout
 dialog-load-layout = Load Layout
+
+# Inspector panel
+inspector-hierarchy = Hierarchy
+inspector-components = Components
+inspector-select-hint = Select an entity to inspect
+
+# Console panel
+console-clear = Clear
+console-auto-clear = Auto-clear on Play
+console-filter-hint = Filter...

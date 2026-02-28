@@ -10,6 +10,7 @@ use bevy_inspector_egui::bevy_inspector::{
 };
 
 use crate::dock::WorkbenchPanel;
+use crate::i18n::I18n;
 
 /// Marker component for entities created/managed by the workbench editor.
 /// These are hidden in the inspector hierarchy by default.
@@ -47,13 +48,24 @@ impl WorkbenchPanel for InspectorPanel {
             .remove_resource::<InspectorSelection>()
             .unwrap_or_default();
 
+        // Pre-fetch translated strings before borrowing world mutably
+        let (s_hierarchy, s_components, s_select_hint) = {
+            let i18n = world.get_resource::<I18n>();
+            let t = |id: &str| i18n.map_or_else(|| id.to_string(), |i| i.t(id));
+            (
+                t("inspector-hierarchy"),
+                t("inspector-components"),
+                t("inspector-select-hint"),
+            )
+        };
+
         // Two-column layout: hierarchy on left, components on right
         egui::SidePanel::left("inspector_hierarchy")
             .resizable(true)
             .default_width(180.0)
             .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.heading("Hierarchy");
+                    ui.heading(&s_hierarchy);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.checkbox(&mut selected.show_internal, "🔧");
                     });
@@ -78,7 +90,7 @@ impl WorkbenchPanel for InspectorPanel {
 
         // Right side: selected entity components
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.heading("Components");
+            ui.heading(&s_components);
             ui.separator();
             egui::ScrollArea::both().show(ui, |ui| match selected.selected.as_slice() {
                 &[entity] => {
@@ -88,7 +100,7 @@ impl WorkbenchPanel for InspectorPanel {
                     bevy_inspector::ui_for_entities_shared_components(world, entities, ui);
                 }
                 _ => {
-                    ui.weak("Select an entity to inspect");
+                    ui.weak(&s_select_hint);
                 }
             });
         });

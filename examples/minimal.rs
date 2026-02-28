@@ -46,6 +46,9 @@ fn setup_game(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
+    info!("Game started — spawning shapes");
+    warn!("This is a test warning: shape count is hardcoded");
+
     // All game entities are marked with DespawnOnEnter(Edit) — auto-cleanup on Stop
     let cleanup = DespawnOnEnter(EditorMode::Edit);
 
@@ -77,6 +80,16 @@ fn setup_game(
 
 fn animate_shapes(clock: Res<GameClock>, mut query: Query<(&ShapeAnim, &mut Transform)>) {
     let t = clock.elapsed;
+
+    // Periodic test logs
+    let frame = (t * 60.0) as u64;
+    if frame % 300 == 0 && frame > 0 {
+        info!("Animation running: elapsed = {:.1}s", t);
+    }
+    if frame == 180 {
+        error!("Test error: this is a simulated error for console testing");
+    }
+
     for (anim, mut tr) in &mut query {
         match anim {
             ShapeAnim::BounceY => {

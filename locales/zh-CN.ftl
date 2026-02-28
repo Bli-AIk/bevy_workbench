@@ -39,3 +39,13 @@ game-view-press-play = 点击播放以启动游戏
 # 文件对话框
 dialog-save-layout = 保存布局
 dialog-load-layout = 加载布局
+
+# 检查器面板
+inspector-hierarchy = 层级
+inspector-components = 组件 (Components)
+inspector-select-hint = 选择一个实体来检查
+
+# 控制台面板
+console-clear = 清除
+console-auto-clear = 播放时自动清除
+console-filter-hint = 筛选...

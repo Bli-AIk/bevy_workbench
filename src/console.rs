@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use std::sync::{Arc, Mutex, mpsc};
 
 use crate::dock::WorkbenchPanel;
+use crate::i18n::I18n;
 
 /// A single log entry.
 #[derive(Clone)]
@@ -182,10 +183,21 @@ impl WorkbenchPanel for ConsolePanel {
     fn ui_world(&mut self, ui: &mut egui::Ui, world: &mut World) {
         let mut console = world.remove_resource::<ConsoleState>().unwrap_or_default();
 
+        // Pre-fetch translated strings
+        let (s_clear, s_auto_clear, s_filter_hint) = {
+            let i18n = world.get_resource::<I18n>();
+            let t = |id: &str| i18n.map_or_else(|| id.to_string(), |i| i.t(id));
+            (
+                t("console-clear"),
+                t("console-auto-clear"),
+                t("console-filter-hint"),
+            )
+        };
+
         // Toolbar row
         ui.horizontal(|ui| {
             // Clear button
-            if ui.button("🗑 Clear").clicked() {
+            if ui.button(format!("🗑 {s_clear}")).clicked() {
                 console.clear();
             }
 
@@ -203,7 +215,7 @@ impl WorkbenchPanel for ConsolePanel {
             ui.separator();
 
             // Auto-clear toggle
-            ui.checkbox(&mut console.auto_clear_on_play, "Auto-clear on Play");
+            ui.checkbox(&mut console.auto_clear_on_play, &s_auto_clear);
 
             ui.separator();
 
@@ -212,7 +224,7 @@ impl WorkbenchPanel for ConsolePanel {
             ui.add(
                 egui::TextEdit::singleline(&mut console.filter_text)
                     .desired_width(150.0)
-                    .hint_text("Filter..."),
+                    .hint_text(&s_filter_hint),
             );
         });
 

@@ -5,6 +5,7 @@ use bevy_egui::EguiContexts;
 
 use crate::dock::{TileLayoutState, WorkbenchPanel};
 use crate::mode::EditorMode;
+use crate::theme::gray;
 
 /// System that renders the top menu bar.
 pub fn menu_bar_system(
@@ -80,6 +81,7 @@ pub fn menu_bar_system(
     });
 
     // Secondary toolbar — centered Play/Pause/Stop
+    let btn_fill = gray::S250;
     egui::TopBottomPanel::top("workbench_toolbar").show(ctx, |ui| {
         ui.horizontal_centered(|ui| {
             let button_w = 80.0;
@@ -94,7 +96,7 @@ pub fn menu_bar_system(
             match current_mode.get() {
                 EditorMode::Edit => {
                     if ui
-                        .add_sized([button_w, 18.0], egui::Button::new("Play"))
+                        .add_sized([button_w, 18.0], egui::Button::new("Play").fill(btn_fill))
                         .clicked()
                     {
                         next_mode.set(EditorMode::Play);
@@ -102,13 +104,13 @@ pub fn menu_bar_system(
                 }
                 EditorMode::Play => {
                     if ui
-                        .add_sized([button_w, 18.0], egui::Button::new("Pause"))
+                        .add_sized([button_w, 18.0], egui::Button::new("Pause").fill(btn_fill))
                         .clicked()
                     {
                         next_mode.set(EditorMode::Pause);
                     }
                     if ui
-                        .add_sized([button_w, 18.0], egui::Button::new("Stop"))
+                        .add_sized([button_w, 18.0], egui::Button::new("Stop").fill(btn_fill))
                         .clicked()
                     {
                         next_mode.set(EditorMode::Edit);
@@ -116,13 +118,13 @@ pub fn menu_bar_system(
                 }
                 EditorMode::Pause => {
                     if ui
-                        .add_sized([button_w, 18.0], egui::Button::new("Resume"))
+                        .add_sized([button_w, 18.0], egui::Button::new("Resume").fill(btn_fill))
                         .clicked()
                     {
                         next_mode.set(EditorMode::Play);
                     }
                     if ui
-                        .add_sized([button_w, 18.0], egui::Button::new("Stop"))
+                        .add_sized([button_w, 18.0], egui::Button::new("Stop").fill(btn_fill))
                         .clicked()
                     {
                         next_mode.set(EditorMode::Edit);

@@ -24,7 +24,7 @@ pub mod theme;
 pub mod undo;
 
 use bevy::prelude::*;
-use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
+use bevy_egui::{EguiGlobalSettings, EguiPlugin, EguiPrimaryContextPass};
 
 /// Main configuration for the workbench editor.
 #[derive(Resource, Clone)]
@@ -56,6 +56,12 @@ impl Plugin for WorkbenchPlugin {
             app.add_plugins(EguiPlugin::default());
         }
 
+        // Disable auto PrimaryEguiContext — we assign it explicitly to the
+        // window camera so the GameViewCamera doesn't accidentally steal it.
+        if let Some(mut settings) = app.world_mut().get_resource_mut::<EguiGlobalSettings>() {
+            settings.auto_create_primary_context = false;
+        }
+
         // Load or create config (project-local)
         let config_path = config::ConfigPath::default();
         let settings = config::WorkbenchSettings::load(&config_path.0);
@@ -74,12 +80,14 @@ impl Plugin for WorkbenchPlugin {
             .add_systems(Update, layout::detect_layout_system)
             .add_systems(Update, mode::mode_input_system)
             .add_systems(Update, undo::undo_input_system)
+            .add_systems(PreUpdate, assign_primary_egui_context_system)
             // UI systems must run in EguiPrimaryContextPass (bevy_egui 0.39 multi-pass mode)
             .add_systems(
                 EguiPrimaryContextPass,
                 (
                     config::config_apply_system,
                     theme::apply_theme_system,
+                    game_view::game_view_sync_system,
                     menu_bar::menu_bar_system,
                     dock::tiles_ui_system,
                 )
@@ -87,7 +95,7 @@ impl Plugin for WorkbenchPlugin {
             );
 
         // Register built-in panels
-        app.register_panel(game_view::GameViewPanel);
+        app.register_panel(game_view::GameViewPanel::default());
         app.register_panel(inspector::InspectorPanel);
         if self.config.show_console {
             app.register_panel(console::ConsolePanel);
@@ -115,5 +123,41 @@ impl WorkbenchApp for App {
             .expect("WorkbenchPlugin must be added before registering panels");
         tile_state.add_panel(Box::new(panel));
         self
+    }
+}
+
+/// Assigns PrimaryEguiContext to the first window-targeting camera that doesn't
+/// have one yet. Runs every frame until assigned. This replaces bevy_egui's
+/// auto_create_primary_context so the GameViewCamera never steals it.
+#[allow(clippy::type_complexity)]
+fn assign_primary_egui_context_system(
+    mut commands: Commands,
+    cameras: Query<
+        (Entity, Option<&bevy::camera::RenderTarget>),
+        (
+            With<bevy::camera::Camera>,
+            Without<bevy_egui::PrimaryEguiContext>,
+            Without<game_view::GameViewCamera>,
+        ),
+    >,
+    existing: Query<(), With<bevy_egui::PrimaryEguiContext>>,
+) {
+    if !existing.is_empty() {
+        return;
+    }
+    // Find the first camera NOT used for render-to-texture
+    for (entity, target) in &cameras {
+        let is_image_target = matches!(
+            target,
+            Some(bevy::camera::RenderTarget::Image(_))
+                | Some(bevy::camera::RenderTarget::TextureView(_))
+        );
+        if !is_image_target {
+            commands.entity(entity).insert((
+                bevy_egui::EguiContext::default(),
+                bevy_egui::PrimaryEguiContext,
+            ));
+            return;
+        }
     }
 }

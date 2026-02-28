@@ -2,25 +2,13 @@
 
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
-use bevy::render::render_resource::{
-    Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
-};
+use bevy::render::render_resource::TextureFormat;
 
-use crate::dock::WorkbenchPanel;
+use crate::dock::{TileLayoutState, WorkbenchPanel};
 
 /// Marker component for the preview camera that renders to the game view texture.
 #[derive(Component)]
 pub struct GameViewCamera;
-
-/// Zoom mode for the game view.
-#[derive(Debug, Clone, Default)]
-pub enum ZoomMode {
-    /// Auto-fit to panel size while preserving aspect ratio.
-    #[default]
-    AutoFit,
-    /// Fixed zoom percentage (1.0 = 100%).
-    Fixed(f32),
-}
 
 /// Resource holding the game view render state.
 #[derive(Resource)]
@@ -29,36 +17,10 @@ pub struct GameViewState {
     pub render_target: Handle<Image>,
     /// The egui texture ID (registered on first use).
     pub egui_texture_id: Option<egui::TextureId>,
-    /// Current zoom mode.
-    pub zoom: ZoomMode,
     /// The preview camera entity.
     pub preview_camera: Option<Entity>,
     /// Resolution of the render target.
     pub resolution: UVec2,
-    /// Whether the game view panel has focus (for input forwarding).
-    pub has_focus: bool,
-    /// Pending gesture events from touch input.
-    pub pending_gestures: Vec<GameViewGesture>,
-}
-
-/// Gesture events recognized within the Game View panel.
-#[derive(Debug, Clone)]
-pub enum GameViewGesture {
-    /// Pinch-to-zoom gesture.
-    PinchZoom {
-        /// Scale factor (>1.0 = zoom in, <1.0 = zoom out).
-        scale: f32,
-    },
-    /// Two-finger pan/drag gesture.
-    PanDrag {
-        /// Pan delta in logical pixels.
-        delta: bevy::math::Vec2,
-    },
-    /// Single tap at a position (mapped to render target coordinates).
-    Tap {
-        /// Position in render target coordinates.
-        position: bevy::math::Vec2,
-    },
 }
 
 impl Default for GameViewState {
@@ -66,11 +28,8 @@ impl Default for GameViewState {
         Self {
             render_target: Handle::default(),
             egui_texture_id: None,
-            zoom: ZoomMode::AutoFit,
             preview_camera: None,
             resolution: UVec2::new(1280, 720),
-            has_focus: false,
-            pending_gestures: Vec::new(),
         }
     }
 }
@@ -81,11 +40,7 @@ pub struct GameViewPlugin;
 impl Plugin for GameViewPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameViewState::default())
-            .add_systems(Startup, setup_game_view)
-            .add_systems(
-                bevy_egui::EguiPrimaryContextPass,
-                register_egui_texture_system,
-            );
+            .add_systems(Startup, setup_game_view);
     }
 }
 
@@ -94,33 +49,15 @@ fn setup_game_view(
     mut images: ResMut<Assets<Image>>,
     mut state: ResMut<GameViewState>,
 ) {
-    let size = Extent3d {
-        width: state.resolution.x,
-        height: state.resolution.y,
-        depth_or_array_layers: 1,
-    };
-
-    let mut image = Image {
-        texture_descriptor: TextureDescriptor {
-            label: Some("game_view_render_target"),
-            size,
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Bgra8UnormSrgb,
-            mip_level_count: 1,
-            sample_count: 1,
-            usage: TextureUsages::TEXTURE_BINDING
-                | TextureUsages::COPY_DST
-                | TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        },
-        ..default()
-    };
-    image.resize(size);
-
+    let image = Image::new_target_texture(
+        state.resolution.x,
+        state.resolution.y,
+        TextureFormat::Bgra8UnormSrgb,
+        Some(TextureFormat::Bgra8UnormSrgb),
+    );
     let image_handle = images.add(image);
     state.render_target = image_handle.clone();
 
-    // Spawn preview camera rendering to the texture
     let camera_entity = commands
         .spawn((
             Camera2d,
@@ -137,25 +74,35 @@ fn setup_game_view(
     state.preview_camera = Some(camera_entity);
 }
 
-/// System that registers the render target image as an egui texture (once).
-fn register_egui_texture_system(
+/// System that registers the render target as an egui texture and syncs to the panel.
+pub fn game_view_sync_system(
     mut state: ResMut<GameViewState>,
     mut contexts: bevy_egui::EguiContexts,
+    mut tile_state: ResMut<TileLayoutState>,
 ) {
-    if state.egui_texture_id.is_some() {
-        return;
+    // Register texture with egui (once)
+    if state.egui_texture_id.is_none() && state.render_target != Handle::default() {
+        let texture_id = contexts.add_image(bevy_egui::EguiTextureHandle::Strong(
+            state.render_target.clone(),
+        ));
+        state.egui_texture_id = Some(texture_id);
     }
-    if state.render_target == Handle::default() {
-        return;
+
+    // Sync texture ID and resolution to the panel
+    if let Some(panel) = tile_state.get_panel_mut::<GameViewPanel>("workbench_game_view") {
+        panel.egui_texture_id = state.egui_texture_id;
+        panel.resolution = state.resolution;
     }
-    let texture_id = contexts.add_image(bevy_egui::EguiTextureHandle::Strong(
-        state.render_target.clone(),
-    ));
-    state.egui_texture_id = Some(texture_id);
 }
 
 /// Built-in Game View dock panel that displays the render target texture.
-pub struct GameViewPanel;
+#[derive(Default)]
+pub struct GameViewPanel {
+    /// The egui texture ID for the render target (synced by game_view_sync_system).
+    pub egui_texture_id: Option<egui::TextureId>,
+    /// Resolution of the render target (for aspect-ratio scaling).
+    pub resolution: UVec2,
+}
 
 impl WorkbenchPanel for GameViewPanel {
     fn id(&self) -> &str {
@@ -167,9 +114,43 @@ impl WorkbenchPanel for GameViewPanel {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui) {
-        ui.centered_and_justified(|ui| {
-            ui.label("Game View\n(Render-to-texture — coming soon)");
-        });
+        if let Some(tex_id) = self.egui_texture_id {
+            let available = ui.available_size();
+            let res = if self.resolution.x > 0 && self.resolution.y > 0 {
+                self.resolution
+            } else {
+                UVec2::new(1280, 720)
+            };
+            let aspect = res.x as f32 / res.y as f32;
+
+            // Fit-to-panel while preserving aspect ratio (Unity-style)
+            let (w, h) = {
+                let w_from_h = available.y * aspect;
+                if w_from_h <= available.x {
+                    (w_from_h, available.y)
+                } else {
+                    (available.x, available.x / aspect)
+                }
+            };
+
+            // Center within the panel
+            let pad_x = (available.x - w) * 0.5;
+            let pad_y = (available.y - h) * 0.5;
+
+            ui.allocate_ui_at_rect(
+                egui::Rect::from_min_size(
+                    ui.min_rect().min + egui::vec2(pad_x.max(0.0), pad_y.max(0.0)),
+                    egui::vec2(w, h),
+                ),
+                |ui| {
+                    ui.image(egui::load::SizedTexture::new(tex_id, [w, h]));
+                },
+            );
+        } else {
+            ui.centered_and_justified(|ui| {
+                ui.label("No render target");
+            });
+        }
     }
 
     fn closable(&self) -> bool {

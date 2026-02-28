@@ -55,8 +55,16 @@ fn setup_render_target(mut images: ResMut<Assets<Image>>, mut state: ResMut<Game
     state.render_target = images.add(image);
 }
 
-/// Spawns the preview camera on Play. `DespawnOnExit` ensures cleanup on Stop.
-fn spawn_game_view_camera(mut commands: Commands, state: Res<GameViewState>) {
+/// Spawns the preview camera on Play if one doesn't already exist (e.g., after Resume).
+/// `DespawnOnEnter(Edit)` ensures cleanup on Stop.
+fn spawn_game_view_camera(
+    mut commands: Commands,
+    state: Res<GameViewState>,
+    existing: Query<(), With<GameViewCamera>>,
+) {
+    if !existing.is_empty() {
+        return;
+    }
     commands.spawn((
         Camera2d,
         Camera {

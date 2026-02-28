@@ -23,10 +23,7 @@ fn main() {
         // Editor camera — always present
         .add_systems(Startup, setup)
         // Game setup — runs only on fresh Play (not Resume from Pause)
-        .add_systems(
-            OnEnter(EditorMode::Play),
-            setup_game.run_if(on_fresh_play),
-        )
+        .add_systems(OnEnter(EditorMode::Play), setup_game.run_if(on_fresh_play))
         // Game logic — runs every frame during Play via GameSchedule
         .add_systems(GameSchedule, animate_shapes)
         .run();

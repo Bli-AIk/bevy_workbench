@@ -317,7 +317,7 @@ fn apply_rerun_theme(ctx: &egui::Context, interact_size_override: Option<Vec2>, 
     style.visuals.widgets.noninteractive.bg_fill = dim_color(gray::S100, b);
     style.visuals.text_edit_bg_color = Some(dim_color(gray::S250, b));
 
-    style.visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+    style.visuals.widgets.inactive.weak_bg_fill = dim_color(gray::S250, b);
     style.visuals.widgets.inactive.bg_fill = dim_color(gray::S300, b);
 
     let hovered = dim_color(gray::S325, b);

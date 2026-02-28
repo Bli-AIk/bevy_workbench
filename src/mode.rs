@@ -21,6 +21,26 @@ pub struct ModeController {
     pub hide_panels_on_play: bool,
 }
 
+/// Syncs Bevy's virtual time with the editor mode.
+/// Pauses in Edit/Pause, unpauses in Play.
+pub fn mode_time_sync_system(
+    mode: Res<State<EditorMode>>,
+    mut virtual_time: ResMut<Time<Virtual>>,
+) {
+    match mode.get() {
+        EditorMode::Play => {
+            if virtual_time.is_paused() {
+                virtual_time.unpause();
+            }
+        }
+        EditorMode::Edit | EditorMode::Pause => {
+            if !virtual_time.is_paused() {
+                virtual_time.pause();
+            }
+        }
+    }
+}
+
 /// System that handles keyboard shortcuts for mode transitions.
 pub fn mode_input_system(
     input: Res<ButtonInput<KeyCode>>,

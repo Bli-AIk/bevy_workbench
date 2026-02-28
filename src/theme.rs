@@ -63,8 +63,27 @@ impl ThemeState {
     }
 }
 
+/// Darken a Color32 by a factor (0.0 = black, 1.0 = unchanged).
+fn dim_color(c: Color32, factor: f32) -> Color32 {
+    Color32::from_rgba_unmultiplied(
+        (c.r() as f32 * factor) as u8,
+        (c.g() as f32 * factor) as u8,
+        (c.b() as f32 * factor) as u8,
+        c.a(),
+    )
+}
+
+fn dim_stroke(s: Stroke, factor: f32) -> Stroke {
+    Stroke::new(s.width, dim_color(s.color, factor))
+}
+
 /// Apply the Rerun-inspired dark theme to an egui context.
-pub fn apply_theme_to_ctx(ctx: &egui::Context, interact_size_override: Option<Vec2>) {
+/// `brightness` = 1.0 for normal, < 1.0 to dim (e.g. 0.6 in Play mode).
+pub fn apply_theme_to_ctx(
+    ctx: &egui::Context,
+    interact_size_override: Option<Vec2>,
+    brightness: f32,
+) {
     let mut style = (*ctx.style()).clone();
 
     // Typography
@@ -128,18 +147,19 @@ pub fn apply_theme_to_ctx(ctx: &egui::Context, interact_size_override: Option<Ve
     style.visuals.image_loading_spinners = false;
 
     // Colors
+    let b = brightness;
     style.visuals.dark_mode = true;
-    style.visuals.faint_bg_color = gray::S150;
-    style.visuals.extreme_bg_color = gray::S0;
+    style.visuals.faint_bg_color = dim_color(gray::S150, b);
+    style.visuals.extreme_bg_color = dim_color(gray::S0, b);
 
-    style.visuals.widgets.noninteractive.weak_bg_fill = gray::S100;
-    style.visuals.widgets.noninteractive.bg_fill = gray::S100;
-    style.visuals.text_edit_bg_color = Some(gray::S200);
+    style.visuals.widgets.noninteractive.weak_bg_fill = dim_color(gray::S100, b);
+    style.visuals.widgets.noninteractive.bg_fill = dim_color(gray::S100, b);
+    style.visuals.text_edit_bg_color = Some(dim_color(gray::S200, b));
 
     style.visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-    style.visuals.widgets.inactive.bg_fill = gray::S300;
+    style.visuals.widgets.inactive.bg_fill = dim_color(gray::S300, b);
 
-    let hovered = gray::S325;
+    let hovered = dim_color(gray::S325, b);
     style.visuals.widgets.hovered.weak_bg_fill = hovered;
     style.visuals.widgets.hovered.bg_fill = hovered;
     style.visuals.widgets.active.weak_bg_fill = hovered;
@@ -147,14 +167,14 @@ pub fn apply_theme_to_ctx(ctx: &egui::Context, interact_size_override: Option<Ve
     style.visuals.widgets.open.weak_bg_fill = hovered;
     style.visuals.widgets.open.bg_fill = hovered;
 
-    style.visuals.selection.bg_fill = blue::S350;
-    style.visuals.selection.stroke.color = blue::S900;
+    style.visuals.selection.bg_fill = dim_color(blue::S350, b);
+    style.visuals.selection.stroke.color = dim_color(blue::S900, b);
 
-    style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, gray::S250);
+    style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, dim_color(gray::S250, b));
 
-    let subdued = gray::S550;
-    let default_text = gray::S775;
-    let strong = gray::S1000;
+    let subdued = dim_color(gray::S550, b);
+    let default_text = dim_color(gray::S775, b);
+    let strong = dim_color(gray::S1000, b);
 
     style.visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, subdued);
     style.visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, default_text);
@@ -162,7 +182,7 @@ pub fn apply_theme_to_ctx(ctx: &egui::Context, interact_size_override: Option<Ve
     style.visuals.widgets.active.fg_stroke = Stroke::new(2.0, strong);
     style.visuals.widgets.open.fg_stroke = Stroke::new(1.0, default_text);
 
-    style.visuals.selection.stroke = Stroke::new(2.0, blue::S900);
+    style.visuals.selection.stroke = dim_stroke(Stroke::new(2.0, blue::S900), b);
 
     let shadow = Shadow {
         offset: [0, 15],
@@ -173,13 +193,13 @@ pub fn apply_theme_to_ctx(ctx: &egui::Context, interact_size_override: Option<Ve
     style.visuals.popup_shadow = shadow;
     style.visuals.window_shadow = shadow;
 
-    style.visuals.window_fill = gray::S200;
+    style.visuals.window_fill = dim_color(gray::S200, b);
     style.visuals.window_stroke = Stroke::NONE;
-    style.visuals.panel_fill = gray::S100;
+    style.visuals.panel_fill = dim_color(gray::S100, b);
 
     style.visuals.hyperlink_color = default_text;
-    style.visuals.error_fg_color = Color32::from_rgb(0xAB, 0x01, 0x16);
-    style.visuals.warn_fg_color = Color32::from_rgb(0xFF, 0x7A, 0x0C);
+    style.visuals.error_fg_color = dim_color(Color32::from_rgb(0xAB, 0x01, 0x16), b);
+    style.visuals.warn_fg_color = dim_color(Color32::from_rgb(0xFF, 0x7A, 0x0C), b);
 
     ctx.set_style(style);
 }
@@ -188,12 +208,20 @@ pub fn apply_theme_to_ctx(ctx: &egui::Context, interact_size_override: Option<Ve
 pub fn apply_theme_system(
     mut contexts: bevy_egui::EguiContexts,
     theme: Res<ThemeState>,
+    mode: Res<State<crate::mode::EditorMode>>,
     mut applied: Local<bool>,
+    mut prev_mode: Local<Option<crate::mode::EditorMode>>,
 ) {
-    if *applied && !theme.is_changed() {
+    let mode_changed = *prev_mode != Some(*mode.get());
+    if *applied && !theme.is_changed() && !mode_changed {
         return;
     }
+    *prev_mode = Some(*mode.get());
     let Ok(ctx) = contexts.ctx_mut() else { return };
-    apply_theme_to_ctx(ctx, theme.interact_size);
+    let brightness = match mode.get() {
+        crate::mode::EditorMode::Edit => 1.0,
+        crate::mode::EditorMode::Play | crate::mode::EditorMode::Pause => 0.6,
+    };
+    apply_theme_to_ctx(ctx, theme.interact_size, brightness);
     *applied = true;
 }

@@ -79,6 +79,7 @@ impl Plugin for WorkbenchPlugin {
             .insert_resource(theme::ThemeState::default())
             .add_systems(Update, layout::detect_layout_system)
             .add_systems(Update, mode::mode_input_system)
+            .add_systems(Update, mode::mode_time_sync_system)
             .add_systems(Update, undo::undo_input_system)
             .add_systems(PreUpdate, assign_primary_egui_context_system)
             // UI systems must run in EguiPrimaryContextPass (bevy_egui 0.39 multi-pass mode)

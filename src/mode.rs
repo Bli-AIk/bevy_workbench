@@ -1,18 +1,31 @@
 //! Editor mode state machine: Edit / Play / Pause.
 
+use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
 
 /// The current editor mode.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum EditorMode {
-    /// Editing mode — panels visible, game paused.
+    /// Editing mode — panels visible, game stopped.
     #[default]
     Edit,
-    /// Playing mode — game running, panels optionally hidden.
+    /// Playing mode — game running.
     Play,
     /// Paused during play.
     Pause,
 }
+
+/// Schedule for game logic. Only runs during [`EditorMode::Play`].
+///
+/// Users should add their game systems here instead of `Update`:
+/// ```rust,ignore
+/// app.add_systems(GameSchedule, (move_player, spawn_enemies));
+/// ```
+///
+/// Entities spawned from `OnEnter(EditorMode::Play)` should include
+/// `DespawnOnExit(EditorMode::Play)` for automatic cleanup on Stop.
+#[derive(ScheduleLabel, Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct GameSchedule;
 
 /// Resource controlling mode behavior.
 #[derive(Resource, Default)]
@@ -21,23 +34,11 @@ pub struct ModeController {
     pub hide_panels_on_play: bool,
 }
 
-/// Syncs Bevy's virtual time with the editor mode.
-/// Pauses in Edit/Pause, unpauses in Play.
-pub fn mode_time_sync_system(
-    mode: Res<State<EditorMode>>,
-    mut virtual_time: ResMut<Time<Virtual>>,
-) {
-    match mode.get() {
-        EditorMode::Play => {
-            if virtual_time.is_paused() {
-                virtual_time.unpause();
-            }
-        }
-        EditorMode::Edit | EditorMode::Pause => {
-            if !virtual_time.is_paused() {
-                virtual_time.pause();
-            }
-        }
+/// Runs the [`GameSchedule`] when in [`EditorMode::Play`].
+pub fn run_game_schedule_system(world: &mut World) {
+    let mode = world.resource::<State<EditorMode>>().get().to_owned();
+    if mode == EditorMode::Play {
+        world.run_schedule(GameSchedule);
     }
 }
 

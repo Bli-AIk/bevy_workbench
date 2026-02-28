@@ -3,8 +3,10 @@
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
+use bevy::state::prelude::DespawnOnExit;
 
 use crate::dock::{TileLayoutState, WorkbenchPanel};
+use crate::mode::EditorMode;
 
 /// Marker component for the preview camera that renders to the game view texture.
 #[derive(Component)]
@@ -17,8 +19,6 @@ pub struct GameViewState {
     pub render_target: Handle<Image>,
     /// The egui texture ID (registered on first use).
     pub egui_texture_id: Option<egui::TextureId>,
-    /// The preview camera entity.
-    pub preview_camera: Option<Entity>,
     /// Resolution of the render target.
     pub resolution: UVec2,
 }
@@ -28,7 +28,6 @@ impl Default for GameViewState {
         Self {
             render_target: Handle::default(),
             egui_texture_id: None,
-            preview_camera: None,
             resolution: UVec2::new(1280, 720),
         }
     }
@@ -40,38 +39,35 @@ pub struct GameViewPlugin;
 impl Plugin for GameViewPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameViewState::default())
-            .add_systems(Startup, setup_game_view);
+            .add_systems(Startup, setup_render_target)
+            .add_systems(OnEnter(EditorMode::Play), spawn_game_view_camera);
     }
 }
 
-fn setup_game_view(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    mut state: ResMut<GameViewState>,
-) {
+/// Creates the render target texture (persistent, survives Play/Stop cycles).
+fn setup_render_target(mut images: ResMut<Assets<Image>>, mut state: ResMut<GameViewState>) {
     let image = Image::new_target_texture(
         state.resolution.x,
         state.resolution.y,
         TextureFormat::Bgra8UnormSrgb,
         Some(TextureFormat::Bgra8UnormSrgb),
     );
-    let image_handle = images.add(image);
-    state.render_target = image_handle.clone();
+    state.render_target = images.add(image);
+}
 
-    let camera_entity = commands
-        .spawn((
-            Camera2d,
-            Camera {
-                order: -1,
-                clear_color: ClearColorConfig::Custom(Color::BLACK),
-                ..default()
-            },
-            RenderTarget::from(image_handle),
-            GameViewCamera,
-        ))
-        .id();
-
-    state.preview_camera = Some(camera_entity);
+/// Spawns the preview camera on Play. `DespawnOnExit` ensures cleanup on Stop.
+fn spawn_game_view_camera(mut commands: Commands, state: Res<GameViewState>) {
+    commands.spawn((
+        Camera2d,
+        Camera {
+            order: -1,
+            clear_color: ClearColorConfig::Custom(Color::BLACK),
+            ..default()
+        },
+        RenderTarget::from(state.render_target.clone()),
+        GameViewCamera,
+        DespawnOnExit(EditorMode::Play),
+    ));
 }
 
 /// System that registers the render target as an egui texture and syncs to the panel.

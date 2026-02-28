@@ -5,6 +5,15 @@ edition = "2024"
 authors = ["Bli-AIk <haikun2333@gmail.com>"]
 license = "MIT OR Apache-2.0"
 description = "A mid-level editor scaffold for Bevy, between bevy-inspector-egui and Unity/Godot"
+autoexamples = false
+
+[[example]]
+name = "minimal"
+path = "examples/minimal.rs"
+
+[[example]]
+name = "control_link"
+path = "examples/control_link.rs"
 
 [dependencies]
 bevy = "0.18"

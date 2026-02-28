@@ -2,6 +2,19 @@
 //!
 //! A custom "Control" panel shows 4 scene objects and a "控制权" node.
 //! Drag from "控制权" to an object to assign WASD/right-click control.
+//!
+//! ## Adding localization for custom panels
+//!
+//! Use `I18n::add_custom_source` to register FTL strings for each locale:
+//! ```rust
+//! use bevy_workbench::i18n::{I18n, Locale};
+//!
+//! fn setup_i18n(mut i18n: ResMut<I18n>) {
+//!     i18n.add_custom_source(Locale::En, "control-node = Control");
+//!     i18n.add_custom_source(Locale::ZhCn, "control-node = 控制权");
+//! }
+//! ```
+//! Then use `i18n.t("control-node")` in your panel's `ui_world`.
 
 #[path = "common.rs"]
 mod common;
@@ -9,6 +22,7 @@ mod common;
 use bevy::prelude::*;
 use bevy_workbench::console::console_log_layer;
 use bevy_workbench::dock::WorkbenchPanel;
+use bevy_workbench::i18n::{I18n, Locale};
 use bevy_workbench::prelude::*;
 
 fn main() {
@@ -36,7 +50,7 @@ fn main() {
     register_panels(&mut app);
 
     app.init_resource::<ControlLinkState>()
-        .add_systems(Startup, setup)
+        .add_systems(Startup, (setup, setup_i18n))
         .add_systems(
             OnEnter(EditorMode::Play),
             common::setup_game.run_if(on_fresh_play),
@@ -50,6 +64,15 @@ fn main() {
 
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
+}
+
+/// Register custom FTL localization for the control link panel.
+fn setup_i18n(mut i18n: ResMut<I18n>) {
+    i18n.add_custom_source(
+        Locale::En,
+        "control-node = Control\npanel-control = Control",
+    );
+    i18n.add_custom_source(Locale::ZhCn, "control-node = 控制权\npanel-control = 控制");
 }
 
 fn register_panels(app: &mut App) {
@@ -97,6 +120,12 @@ impl WorkbenchPanel for ControlLinkPanel {
         let object_color = egui::Color32::from_rgb(80, 160, 255);
         let linked_color = egui::Color32::from_rgb(100, 255, 100);
 
+        // Localized label for the control node
+        let control_label = world
+            .get_resource::<I18n>()
+            .map(|i18n| i18n.t("control-node"))
+            .unwrap_or_else(|| "Control".into());
+
         // Collect scene objects
         let mut objects: Vec<(Entity, String)> = Vec::new();
         let mut scene_q = world.query::<(Entity, &common::SceneObject)>();
@@ -139,12 +168,12 @@ impl WorkbenchPanel for ControlLinkPanel {
         }
 
         // Handle click-to-unlink
-        if let Some(old) = clicked_linked {
-            if state.linked_entity == Some(old) {
-                state.linked_entity = None;
-                if let Ok(mut e) = world.get_entity_mut(old) {
-                    e.remove::<common::Controlled>();
-                }
+        if let Some(old) = clicked_linked
+            && state.linked_entity == Some(old)
+        {
+            state.linked_entity = None;
+            if let Ok(mut e) = world.get_entity_mut(old) {
+                e.remove::<common::Controlled>();
             }
         }
 
@@ -160,10 +189,10 @@ impl WorkbenchPanel for ControlLinkPanel {
                 for &(entity, rect) in &object_rects {
                     if rect.contains(pointer_pos) {
                         // Unlink previous
-                        if let Some(old) = state.linked_entity.take() {
-                            if let Ok(mut e) = world.get_entity_mut(old) {
-                                e.remove::<common::Controlled>();
-                            }
+                        if let Some(old) = state.linked_entity.take()
+                            && let Ok(mut e) = world.get_entity_mut(old)
+                        {
+                            e.remove::<common::Controlled>();
                         }
                         // Link new
                         if let Ok(mut e) = world.get_entity_mut(entity) {
@@ -184,7 +213,7 @@ impl WorkbenchPanel for ControlLinkPanel {
         painter.text(
             control_rect.center(),
             egui::Align2::CENTER_CENTER,
-            "控制权",
+            &control_label,
             egui::FontId::proportional(14.0),
             egui::Color32::BLACK,
         );
@@ -209,13 +238,13 @@ impl WorkbenchPanel for ControlLinkPanel {
         }
 
         // Drag line
-        if state.dragging {
-            if let Some(pointer_pos) = ui.ctx().pointer_latest_pos() {
-                painter.line_segment(
-                    [state.drag_start, pointer_pos],
-                    egui::Stroke::new(2.5, control_color),
-                );
-            }
+        if state.dragging
+            && let Some(pointer_pos) = ui.ctx().pointer_latest_pos()
+        {
+            painter.line_segment(
+                [state.drag_start, pointer_pos],
+                egui::Stroke::new(2.5, control_color),
+            );
         }
 
         // Permanent link line

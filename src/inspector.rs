@@ -113,7 +113,7 @@ fn restore_snapshot(world: &mut World, entity: Entity, snapshot: &ComponentSnaps
         let Some(reflect_component) = registration.data::<ReflectComponent>() else {
             continue;
         };
-        if let Some(mut entity_mut) = world.get_entity_mut(entity).ok() {
+        if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
             reflect_component.apply(&mut entity_mut, value.as_ref());
         }
     }
@@ -232,27 +232,26 @@ impl WorkbenchPanel for InspectorPanel {
                     bevy_inspector::ui_for_entity(world, entity, ui);
 
                     // On mouse release after pressing, check for changes
-                    if undo_state.was_pressing && !pressing {
-                        if let Some(baseline) = &undo_state.baseline {
-                            if let Some(current) = snapshot_entity(world, entity) {
-                                if snapshots_differ(baseline, &current) {
-                                    let before = clone_snapshot(baseline);
-                                    let desc = format!("Modify entity {entity:?}");
-                                    if let Some(mut undo_stack) =
-                                        world.get_resource_mut::<crate::undo::UndoStack>()
-                                    {
-                                        undo_stack.push(InspectorUndoAction {
-                                            entity,
-                                            before,
-                                            after: current,
-                                            desc,
-                                        });
-                                    }
-                                    // Update baseline to current state
-                                    undo_state.baseline = snapshot_entity(world, entity);
-                                }
-                            }
+                    if undo_state.was_pressing
+                        && !pressing
+                        && let Some(baseline) = &undo_state.baseline
+                        && let Some(current) = snapshot_entity(world, entity)
+                        && snapshots_differ(baseline, &current)
+                    {
+                        let before = clone_snapshot(baseline);
+                        let desc = format!("Modify entity {entity:?}");
+                        if let Some(mut undo_stack) =
+                            world.get_resource_mut::<crate::undo::UndoStack>()
+                        {
+                            undo_stack.push(InspectorUndoAction {
+                                entity,
+                                before,
+                                after: current,
+                                desc,
+                            });
                         }
+                        // Update baseline to current state
+                        undo_state.baseline = snapshot_entity(world, entity);
                     }
                     undo_state.was_pressing = pressing;
 

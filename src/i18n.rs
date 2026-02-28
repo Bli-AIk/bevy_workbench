@@ -60,6 +60,8 @@ impl Locale {
 pub struct I18n {
     bundle: Arc<FluentBundle<FluentResource>>,
     pub locale: Locale,
+    /// Custom FTL sources registered by user panels (indexed by Locale).
+    custom_sources: Vec<(Locale, String)>,
 }
 
 impl Default for I18n {
@@ -70,18 +72,26 @@ impl Default for I18n {
 
 impl I18n {
     pub fn new(locale: Locale) -> Self {
-        let bundle = Self::build_bundle(locale);
+        let bundle = Self::build_bundle(locale, &[]);
         Self {
             bundle: Arc::new(bundle),
             locale,
+            custom_sources: Vec::new(),
         }
+    }
+
+    /// Register a custom FTL source for a given locale.
+    /// The bundle is rebuilt immediately if the locale matches.
+    pub fn add_custom_source(&mut self, locale: Locale, ftl: impl Into<String>) {
+        self.custom_sources.push((locale, ftl.into()));
+        self.bundle = Arc::new(Self::build_bundle(self.locale, &self.custom_sources));
     }
 
     /// Change the active locale.
     pub fn set_locale(&mut self, locale: Locale) {
         if self.locale != locale {
             self.locale = locale;
-            self.bundle = Arc::new(Self::build_bundle(locale));
+            self.bundle = Arc::new(Self::build_bundle(locale, &self.custom_sources));
         }
     }
 
@@ -100,12 +110,22 @@ impl I18n {
         }
     }
 
-    fn build_bundle(locale: Locale) -> FluentBundle<FluentResource> {
+    fn build_bundle(locale: Locale, custom: &[(Locale, String)]) -> FluentBundle<FluentResource> {
         let lang_id = locale.lang_id();
         let source = locale.ftl_source();
         let resource = FluentResource::try_new(source.to_string()).expect("valid FTL resource");
         let mut bundle = FluentBundle::new_concurrent(vec![lang_id]);
         bundle.add_resource(resource).expect("add FTL resource");
+
+        // Add custom sources matching this locale
+        for (loc, ftl) in custom {
+            if *loc == locale
+                && let Ok(res) = FluentResource::try_new(ftl.clone())
+            {
+                let _ = bundle.add_resource(res);
+            }
+        }
+
         bundle
     }
 }

@@ -22,8 +22,11 @@ fn main() {
         .add_plugins(GameViewPlugin)
         // Editor camera — always present
         .add_systems(Startup, setup)
-        // Game setup — runs when entering Play mode
-        .add_systems(OnEnter(EditorMode::Play), setup_game)
+        // Game setup — runs only on fresh Play (not Resume from Pause)
+        .add_systems(
+            OnEnter(EditorMode::Play),
+            setup_game.run_if(on_fresh_play),
+        )
         // Game logic — runs every frame during Play via GameSchedule
         .add_systems(GameSchedule, animate_shapes)
         .run();
@@ -75,8 +78,8 @@ fn setup_game(
     ));
 }
 
-fn animate_shapes(time: Res<Time>, mut query: Query<(&ShapeAnim, &mut Transform)>) {
-    let t = time.elapsed_secs();
+fn animate_shapes(clock: Res<GameClock>, mut query: Query<(&ShapeAnim, &mut Transform)>) {
+    let t = clock.elapsed;
     for (anim, mut tr) in &mut query {
         match anim {
             ShapeAnim::BounceY => {

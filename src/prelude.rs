@@ -10,6 +10,6 @@ pub use crate::dock::{PanelSlot, TileLayoutState, WorkbenchPanel};
 pub use crate::game_view::{GameViewCamera, GameViewPanel, GameViewPlugin, GameViewState};
 pub use crate::inspector::InspectorPanel;
 pub use crate::layout::{LayoutMode, LayoutState};
-pub use crate::mode::{EditorMode, GameSchedule, ModeController};
+pub use crate::mode::{EditorMode, GameClock, GameSchedule, ModeController, on_fresh_play};
 pub use crate::theme::ThemeState;
 pub use crate::undo::{UndoAction, UndoStack};

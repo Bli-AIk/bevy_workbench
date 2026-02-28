@@ -34,12 +34,58 @@ pub struct ModeController {
     pub hide_panels_on_play: bool,
 }
 
-/// Runs the [`GameSchedule`] when in [`EditorMode::Play`].
+/// Tracks elapsed time within the current game session.
+/// Reset on each Play; paused during Pause; stopped during Edit.
+#[derive(Resource)]
+pub struct GameClock {
+    /// Seconds elapsed since the current Play session started.
+    pub elapsed: f32,
+    /// The previous editor mode (for distinguishing fresh Play vs Resume).
+    pub(crate) previous_mode: EditorMode,
+}
+
+impl Default for GameClock {
+    fn default() -> Self {
+        Self {
+            elapsed: 0.0,
+            previous_mode: EditorMode::Edit,
+        }
+    }
+}
+
+/// Runs the [`GameSchedule`] when in [`EditorMode::Play`],
+/// advancing [`GameClock`] each frame.
 pub fn run_game_schedule_system(world: &mut World) {
     let mode = world.resource::<State<EditorMode>>().get().to_owned();
     if mode == EditorMode::Play {
+        let dt = world.resource::<Time>().delta_secs();
+        world.resource_mut::<GameClock>().elapsed += dt;
         world.run_schedule(GameSchedule);
     }
+}
+
+/// Resets the [`GameClock`] when entering Play from Edit (not Resume from Pause).
+pub fn on_enter_play(mut clock: ResMut<GameClock>) {
+    if clock.previous_mode == EditorMode::Edit {
+        clock.elapsed = 0.0;
+    }
+    clock.previous_mode = EditorMode::Play;
+}
+
+/// Tracks that we entered Pause.
+pub fn on_enter_pause(mut clock: ResMut<GameClock>) {
+    clock.previous_mode = EditorMode::Pause;
+}
+
+/// Tracks that we returned to Edit.
+pub fn on_enter_edit(mut clock: ResMut<GameClock>) {
+    clock.previous_mode = EditorMode::Edit;
+}
+
+/// Run condition: true only for fresh Play (from Edit), not Resume (from Pause).
+/// Use with `OnEnter(EditorMode::Play)` to gate game setup systems.
+pub fn on_fresh_play(clock: Res<GameClock>) -> bool {
+    clock.previous_mode == EditorMode::Edit
 }
 
 /// System that handles keyboard shortcuts for mode transitions.

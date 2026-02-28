@@ -133,15 +133,9 @@ impl WorkbenchPanel for GameViewPanel {
                 }
             };
 
-            // Center within the panel
-            let pad_x = (available.x - w) * 0.5;
-            let pad_y = (available.y - h) * 0.5;
-
-            ui.allocate_ui_at_rect(
-                egui::Rect::from_min_size(
-                    ui.min_rect().min + egui::vec2(pad_x.max(0.0), pad_y.max(0.0)),
-                    egui::vec2(w, h),
-                ),
+            // Center the image within the panel
+            ui.with_layout(
+                egui::Layout::centered_and_justified(ui.layout().main_dir()),
                 |ui| {
                     ui.image(egui::load::SizedTexture::new(tex_id, [w, h]));
                 },

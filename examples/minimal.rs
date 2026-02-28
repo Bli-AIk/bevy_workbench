@@ -91,7 +91,7 @@ fn animate_shapes(clock: Res<GameClock>, mut query: Query<(&ShapeAnim, &mut Tran
 
     // Periodic test logs
     let frame = (t * 60.0) as u64;
-    if frame % 300 == 0 && frame > 0 {
+    if frame.is_multiple_of(300) && frame > 0 {
         info!("Animation running: elapsed = {:.1}s", t);
     }
     if frame == 180 {

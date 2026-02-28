@@ -78,10 +78,12 @@ pub struct TileLayoutState {
     pub(crate) panel_id_map: HashMap<String, PanelId>,
     /// Maps PanelIds to TileIds in the tree (for visibility control).
     pub(crate) panel_tile_map: HashMap<PanelId, egui_tiles::TileId>,
-    /// Set by menu to request layout save.
-    pub(crate) layout_save_requested: bool,
     /// Set by menu to request layout reset to default.
     pub(crate) layout_reset_requested: bool,
+    /// Path to save layout to (set via file dialog).
+    pub(crate) layout_save_path: Option<std::path::PathBuf>,
+    /// Path to load layout from (set via file dialog).
+    pub(crate) layout_load_path: Option<std::path::PathBuf>,
 }
 
 impl TileLayoutState {
@@ -312,7 +314,7 @@ impl TileLayoutState {
         (panel.as_mut() as &mut dyn std::any::Any).downcast_mut::<T>()
     }
 
-    /// Save the current layout to a file.
+    /// Save the current layout to a file (JSON format).
     pub fn save_layout(&self, path: &std::path::Path) {
         let Some(tree) = &self.tree else { return };
         // Build reverse map: panel_id → str_id
@@ -325,7 +327,7 @@ impl TileLayoutState {
             tree: tree.clone(),
             panel_names: id_to_str,
         };
-        let content = toml::to_string_pretty(&data).expect("serialize layout");
+        let content = serde_json::to_string_pretty(&data).expect("serialize layout");
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -334,14 +336,14 @@ impl TileLayoutState {
         }
     }
 
-    /// Load layout from a file. Returns true if successful.
+    /// Load layout from a JSON file. Returns true if successful.
     /// Must be called after all panels are registered but before the tree is built.
     pub fn load_layout(&mut self, path: &std::path::Path) -> bool {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(_) => return false,
         };
-        let data: LayoutData = match toml::from_str(&content) {
+        let data: LayoutData = match serde_json::from_str(&content) {
             Ok(d) => d,
             Err(e) => {
                 warn!("Failed to parse layout {}: {e}", path.display());
@@ -462,7 +464,7 @@ pub struct LayoutPath(pub std::path::PathBuf);
 
 impl Default for LayoutPath {
     fn default() -> Self {
-        Self(std::path::PathBuf::from(".workbench/layout.toml"))
+        Self(std::path::PathBuf::from(".workbench/layout.json"))
     }
 }
 
@@ -475,11 +477,17 @@ pub fn tiles_ui_system(
     // Build tree on first frame (after all panels registered)
     state.build_tree(Some(&layout_path.0));
 
-    // Handle layout save request
-    if state.layout_save_requested {
-        state.layout_save_requested = false;
-        state.save_layout(&layout_path.0);
-        info!("Layout saved to {}", layout_path.0.display());
+    // Handle layout save request (via file dialog path)
+    if let Some(path) = state.layout_save_path.take() {
+        state.save_layout(&path);
+        info!("Layout saved to {}", path.display());
+    }
+
+    // Handle layout load request (via file dialog path)
+    if let Some(path) = state.layout_load_path.take()
+        && state.load_layout(&path)
+    {
+        info!("Layout loaded from {}", path.display());
     }
 
     // Handle layout reset request

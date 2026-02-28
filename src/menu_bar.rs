@@ -49,10 +49,28 @@ pub fn menu_bar_system(
             });
 
             ui.menu_button("View", |ui| {
-                if ui.button("Save Layout").clicked() {
-                    tile_state.layout_save_requested = true;
+                if ui.button("Save Layout...").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_title("Save Layout")
+                        .add_filter("JSON", &["json"])
+                        .set_file_name("layout.json")
+                        .save_file()
+                    {
+                        tile_state.layout_save_path = Some(path);
+                    }
                     ui.close();
                 }
+                if ui.button("Load Layout...").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_title("Load Layout")
+                        .add_filter("JSON", &["json"])
+                        .pick_file()
+                    {
+                        tile_state.layout_load_path = Some(path);
+                    }
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button("Reset Layout").clicked() {
                     tile_state.layout_reset_requested = true;
                     ui.close();

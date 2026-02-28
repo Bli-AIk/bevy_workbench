@@ -139,6 +139,7 @@ impl Plugin for WorkbenchPlugin {
         };
         app.register_panel(settings_panel);
         app.register_panel(menu_bar::KeybindingsPanel);
+        app.register_panel(undo::UndoHistoryPanel);
     }
 }
 

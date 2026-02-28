@@ -2,6 +2,7 @@
 //!
 //! Shows a workbench editor with a game view rendering animated colored shapes.
 //! Game entities are spawned on Play and auto-despawned on Stop.
+//! Includes a player triangle controllable with WASD/right-click.
 
 use bevy::prelude::*;
 use bevy::state::prelude::DespawnOnEnter;
@@ -28,12 +29,15 @@ fn main() {
         .insert_resource(ClearColor(Color::BLACK))
         .add_plugins(WorkbenchPlugin::default())
         .add_plugins(GameViewPlugin)
+        .register_type::<ShapeAnim>()
+        .register_type::<Player>()
+        .register_type::<MoveSpeed>()
         // Editor camera — always present
         .add_systems(Startup, setup)
         // Game setup — runs only on fresh Play (not Resume from Pause)
         .add_systems(OnEnter(EditorMode::Play), setup_game.run_if(on_fresh_play))
         // Game logic — runs every frame during Play via GameSchedule
-        .add_systems(GameSchedule, animate_shapes)
+        .add_systems(GameSchedule, (animate_shapes, player_movement))
         .run();
 }
 
@@ -42,11 +46,28 @@ fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
 }
 
-#[derive(Component)]
+#[derive(Component, Reflect)]
+#[reflect(Component)]
 enum ShapeAnim {
     BounceY,
     Rotate,
     BounceX,
+}
+
+/// Marker for the player entity.
+#[derive(Component, Reflect, Default)]
+#[reflect(Component)]
+struct Player;
+
+/// Movement speed of the player.
+#[derive(Component, Reflect)]
+#[reflect(Component)]
+struct MoveSpeed(f32);
+
+impl Default for MoveSpeed {
+    fn default() -> Self {
+        Self(200.0)
+    }
 }
 
 fn setup_game(
@@ -82,8 +103,20 @@ fn setup_game(
         MeshMaterial2d(materials.add(Color::srgb(0.4, 0.4, 1.0))),
         Transform::from_xyz(-120.0, -60.0, 0.0),
         ShapeAnim::BounceX,
+        cleanup.clone(),
+    ));
+
+    // Player — triangle, controllable with WASD/right-click
+    commands.spawn((
+        Mesh2d(meshes.add(RegularPolygon::new(30.0, 3))),
+        MeshMaterial2d(materials.add(Color::srgb(1.0, 1.0, 0.2))),
+        Transform::from_xyz(0.0, -150.0, 1.0),
+        Player,
+        MoveSpeed(200.0),
         cleanup,
     ));
+
+    info!("Player spawned — use WASD to move, right-click to teleport");
 }
 
 fn animate_shapes(clock: Res<GameClock>, mut query: Query<(&ShapeAnim, &mut Transform)>) {
@@ -108,6 +141,54 @@ fn animate_shapes(clock: Res<GameClock>, mut query: Query<(&ShapeAnim, &mut Tran
             }
             ShapeAnim::BounceX => {
                 tr.translation.x = -120.0 + (t * 1.2).cos() * 150.0;
+            }
+        }
+    }
+}
+
+fn player_movement(
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    cameras: Query<(&Camera, &GlobalTransform)>,
+    mut player: Query<(&MoveSpeed, &mut Transform), With<Player>>,
+) {
+    let Ok((speed, mut tr)) = player.single_mut() else {
+        return;
+    };
+    let dt = time.delta_secs();
+
+    // WASD movement
+    let mut dir = Vec2::ZERO;
+    if keys.pressed(KeyCode::KeyW) {
+        dir.y += 1.0;
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        dir.y -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        dir.x -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        dir.x += 1.0;
+    }
+    if dir != Vec2::ZERO {
+        let delta = dir.normalize() * speed.0 * dt;
+        tr.translation.x += delta.x;
+        tr.translation.y += delta.y;
+    }
+
+    // Right-click teleport
+    if mouse_buttons.just_pressed(MouseButton::Right)
+        && let Ok(window) = windows.single()
+        && let Some(cursor_pos) = window.cursor_position()
+    {
+        for (camera, camera_transform) in &cameras {
+            if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
+                tr.translation.x = world_pos.x;
+                tr.translation.y = world_pos.y;
+                break;
             }
         }
     }

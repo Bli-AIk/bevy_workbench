@@ -2,6 +2,7 @@
 
 use bevy::ecs::component::Mutable;
 use bevy::prelude::*;
+use bevy_egui::egui;
 
 /// Trait for undo/redo actions.
 pub trait UndoAction: Send + Sync + 'static {
@@ -140,6 +141,8 @@ pub struct UndoStack {
     pub undo_requested: bool,
     /// Set to true to request redo on next frame (for menu buttons).
     pub redo_requested: bool,
+    /// Set to request jumping to a specific history index.
+    pub jump_requested: Option<usize>,
 }
 
 impl Default for UndoStack {
@@ -150,6 +153,7 @@ impl Default for UndoStack {
             max_history: 100,
             undo_requested: false,
             redo_requested: false,
+            jump_requested: None,
         }
     }
 }
@@ -250,6 +254,44 @@ impl UndoStack {
     pub fn redo_description(&self) -> Option<&str> {
         self.redo_stack.last().map(|a| a.description())
     }
+
+    /// Returns descriptions of all undo entries (oldest first).
+    pub fn undo_history(&self) -> Vec<&str> {
+        self.undo_stack.iter().map(|a| a.description()).collect()
+    }
+
+    /// Returns descriptions of all redo entries (next-to-redo first).
+    pub fn redo_history(&self) -> Vec<&str> {
+        self.redo_stack
+            .iter()
+            .rev()
+            .map(|a| a.description())
+            .collect()
+    }
+
+    /// Jump to a specific state by index.
+    /// Index 0 = initial state (undo everything), index == undo_count = current state.
+    pub fn jump_to(&mut self, target_index: usize, world: &mut World) {
+        let current = self.undo_stack.len();
+        if target_index < current {
+            // Undo forward (current → target)
+            for _ in 0..(current - target_index) {
+                if let Some(action) = self.undo_stack.pop() {
+                    action.undo(world);
+                    self.redo_stack.push(action);
+                }
+            }
+        } else if target_index > current {
+            // Redo forward (current → target)
+            let steps = target_index - current;
+            for _ in 0..steps {
+                if let Some(action) = self.redo_stack.pop() {
+                    action.redo(world);
+                    self.undo_stack.push(action);
+                }
+            }
+        }
+    }
 }
 
 /// System that handles undo/redo keyboard shortcuts and menu requests.
@@ -264,15 +306,15 @@ pub fn undo_input_system(world: &mut World) {
     let do_redo = bindings.redo.just_pressed(input);
 
     // Also check request flags from menu buttons
-    let (menu_undo, menu_redo) = world
+    let (menu_undo, menu_redo, jump_target) = world
         .get_resource::<UndoStack>()
-        .map(|s| (s.undo_requested, s.redo_requested))
+        .map(|s| (s.undo_requested, s.redo_requested, s.jump_requested))
         .unwrap_or_default();
 
     let want_undo = do_undo || menu_undo;
     let want_redo = do_redo || menu_redo;
 
-    if !want_undo && !want_redo {
+    if !want_undo && !want_redo && jump_target.is_none() {
         return;
     }
 
@@ -280,7 +322,11 @@ pub fn undo_input_system(world: &mut World) {
     if let Some(ref mut stack) = undo_stack {
         stack.undo_requested = false;
         stack.redo_requested = false;
-        if want_redo {
+        stack.jump_requested = None;
+
+        if let Some(target) = jump_target {
+            stack.jump_to(target, world);
+        } else if want_redo {
             stack.redo(world);
         } else if want_undo {
             stack.undo(world);
@@ -288,5 +334,109 @@ pub fn undo_input_system(world: &mut World) {
     }
     if let Some(stack) = undo_stack {
         world.insert_resource(stack);
+    }
+}
+
+/// Panel that shows undo/redo history as a clickable list.
+pub struct UndoHistoryPanel;
+
+impl crate::dock::WorkbenchPanel for UndoHistoryPanel {
+    fn id(&self) -> &str {
+        "undo_history"
+    }
+
+    fn title(&self) -> String {
+        "Undo History".to_string()
+    }
+
+    fn ui(&mut self, _ui: &mut egui::Ui) {}
+
+    fn ui_world(&mut self, ui: &mut egui::Ui, world: &mut World) {
+        let Some(mut stack) = world.remove_resource::<UndoStack>() else {
+            ui.label("No undo stack");
+            return;
+        };
+
+        let undo_descs: Vec<String> = stack
+            .undo_stack
+            .iter()
+            .map(|a| a.description().to_string())
+            .collect();
+        let redo_descs: Vec<String> = stack
+            .redo_stack
+            .iter()
+            .rev()
+            .map(|a| a.description().to_string())
+            .collect();
+        let current_index = undo_descs.len();
+
+        egui::Frame::NONE
+            .inner_margin(egui::Margin::same(4))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "History: {} undo, {} redo",
+                        undo_descs.len(),
+                        redo_descs.len()
+                    ));
+                    if ui.small_button("Clear").clicked() {
+                        stack.clear();
+                    }
+                });
+                ui.separator();
+
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        // Initial state
+                        let is_current = current_index == 0;
+                        let label = if is_current {
+                            egui::RichText::new("▸ (initial state)")
+                                .strong()
+                                .color(egui::Color32::WHITE)
+                        } else {
+                            egui::RichText::new("  (initial state)").color(egui::Color32::GRAY)
+                        };
+                        if ui.selectable_label(is_current, label).clicked() && !is_current {
+                            stack.jump_requested = Some(0);
+                        }
+
+                        // Undo entries (past actions)
+                        for (i, desc) in undo_descs.iter().enumerate() {
+                            let idx = i + 1;
+                            let is_current = idx == current_index;
+                            let label = if is_current {
+                                egui::RichText::new(format!("▸ {desc}"))
+                                    .strong()
+                                    .color(egui::Color32::WHITE)
+                            } else {
+                                egui::RichText::new(format!("  {desc}"))
+                            };
+                            if ui.selectable_label(is_current, label).clicked() && !is_current {
+                                stack.jump_requested = Some(idx);
+                            }
+                        }
+
+                        // Redo entries (future actions, grayed out)
+                        for (i, desc) in redo_descs.iter().enumerate() {
+                            let idx = current_index + 1 + i;
+                            let label = egui::RichText::new(format!("  {desc}"))
+                                .color(egui::Color32::from_gray(100));
+                            if ui.selectable_label(false, label).clicked() {
+                                stack.jump_requested = Some(idx);
+                            }
+                        }
+                    });
+            });
+
+        world.insert_resource(stack);
+    }
+
+    fn needs_world(&self) -> bool {
+        true
+    }
+
+    fn default_visible(&self) -> bool {
+        false
     }
 }

@@ -57,6 +57,10 @@ pub fn menu_bar_system(
                     tile_state.request_open_panel("keybindings");
                     ui.close();
                 }
+                if ui.button("Undo History").clicked() {
+                    tile_state.request_open_panel("undo_history");
+                    ui.close();
+                }
             });
 
             ui.menu_button(i18n.t("menu-view"), |ui| {

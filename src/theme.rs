@@ -60,17 +60,33 @@ pub struct ThemeConfig {
     /// Theme used in Play/Pause mode.
     #[serde(default = "default_play_theme")]
     pub play_theme: ThemePreset,
+    /// Brightness for Edit mode (0.0–1.0, default 1.0).
+    #[serde(default = "default_brightness")]
+    pub edit_brightness: f32,
+    /// Brightness for Play/Pause mode (0.0–1.0, default 0.6).
+    #[serde(default = "default_play_brightness")]
+    pub play_brightness: f32,
 }
 
 fn default_play_theme() -> ThemePreset {
-    ThemePreset::EguiDark
+    ThemePreset::Rerun
+}
+
+fn default_brightness() -> f32 {
+    1.0
+}
+
+fn default_play_brightness() -> f32 {
+    0.6
 }
 
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
             edit_theme: ThemePreset::Rerun,
-            play_theme: default_play_theme(),
+            play_theme: ThemePreset::Rerun,
+            edit_brightness: 1.0,
+            play_brightness: 0.6,
         }
     }
 }
@@ -364,9 +380,9 @@ pub fn apply_theme_system(
     *prev_mode = Some(*mode.get());
     let Ok(ctx) = contexts.ctx_mut() else { return };
     let (preset, brightness) = match mode.get() {
-        crate::mode::EditorMode::Edit => (theme.config.edit_theme, 1.0),
+        crate::mode::EditorMode::Edit => (theme.config.edit_theme, theme.config.edit_brightness),
         crate::mode::EditorMode::Play | crate::mode::EditorMode::Pause => {
-            (theme.config.play_theme, 0.6)
+            (theme.config.play_theme, theme.config.play_brightness)
         }
     };
     apply_theme_to_ctx(ctx, preset, theme.interact_size, brightness);

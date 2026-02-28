@@ -15,6 +15,7 @@ pub mod config;
 pub mod console;
 pub mod dock;
 pub mod game_view;
+pub mod i18n;
 pub mod inspector;
 pub mod layout;
 pub mod menu_bar;
@@ -83,6 +84,7 @@ impl Plugin for WorkbenchPlugin {
                 config: settings.theme.clone(),
                 ..Default::default()
             })
+            .insert_resource(i18n::I18n::new(settings.locale))
             .add_systems(Update, layout::detect_layout_system)
             .add_systems(Update, mode::mode_input_system)
             .add_systems(Update, mode::run_game_schedule_system)
@@ -95,8 +97,7 @@ impl Plugin for WorkbenchPlugin {
             .add_systems(
                 EguiPrimaryContextPass,
                 (
-                    config::config_apply_system,
-                    theme::apply_theme_system,
+                    (config::config_apply_system, theme::apply_theme_system).chain(),
                     game_view::game_view_sync_system,
                     menu_bar::menu_bar_system,
                     dock::tiles_ui_system,
@@ -115,6 +116,9 @@ impl Plugin for WorkbenchPlugin {
             edited_scale: settings.ui_scale,
             edited_edit_theme: settings.theme.edit_theme,
             edited_play_theme: settings.theme.play_theme,
+            edited_edit_brightness: settings.theme.edit_brightness,
+            edited_play_brightness: settings.theme.play_brightness,
+            edited_locale: settings.locale,
             ..Default::default()
         };
         app.register_panel(settings_panel);

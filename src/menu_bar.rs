@@ -13,45 +13,46 @@ pub fn menu_bar_system(
     current_mode: Res<State<EditorMode>>,
     mut next_mode: ResMut<NextState<EditorMode>>,
     mut tile_state: ResMut<TileLayoutState>,
+    i18n: Res<crate::i18n::I18n>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::TopBottomPanel::top("workbench_menu_bar").show(ctx, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
             // Left side: menus
-            ui.menu_button("File", |ui| {
-                if ui.button("New").clicked() {
+            ui.menu_button(i18n.t("menu-file"), |ui| {
+                if ui.button(i18n.t("menu-file-new")).clicked() {
                     ui.close();
                 }
-                if ui.button("Open...").clicked() {
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button("Save").clicked() {
-                    ui.close();
-                }
-                if ui.button("Save As...").clicked() {
+                if ui.button(i18n.t("menu-file-open")).clicked() {
                     ui.close();
                 }
                 ui.separator();
-                if ui.button("Settings").clicked() {
+                if ui.button(i18n.t("menu-file-save")).clicked() {
+                    ui.close();
+                }
+                if ui.button(i18n.t("menu-file-save-as")).clicked() {
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button(i18n.t("menu-file-settings")).clicked() {
                     tile_state.open_or_focus_panel("settings");
                     ui.close();
                 }
             });
 
-            ui.menu_button("Edit", |ui| {
-                if ui.button("Undo (Ctrl+Z)").clicked() {
+            ui.menu_button(i18n.t("menu-edit"), |ui| {
+                if ui.button(i18n.t("menu-edit-undo")).clicked() {
                     ui.close();
                 }
-                if ui.button("Redo (Ctrl+Shift+Z)").clicked() {
+                if ui.button(i18n.t("menu-edit-redo")).clicked() {
                     ui.close();
                 }
             });
 
-            ui.menu_button("View", |ui| {
-                if ui.button("Save Layout...").clicked() {
+            ui.menu_button(i18n.t("menu-view"), |ui| {
+                if ui.button(i18n.t("menu-view-save-layout")).clicked() {
                     if let Some(path) = rfd::FileDialog::new()
-                        .set_title("Save Layout")
+                        .set_title(i18n.t("dialog-save-layout"))
                         .add_filter("JSON", &["json"])
                         .set_file_name("layout.json")
                         .save_file()
@@ -60,9 +61,9 @@ pub fn menu_bar_system(
                     }
                     ui.close();
                 }
-                if ui.button("Load Layout...").clicked() {
+                if ui.button(i18n.t("menu-view-load-layout")).clicked() {
                     if let Some(path) = rfd::FileDialog::new()
-                        .set_title("Load Layout")
+                        .set_title(i18n.t("dialog-load-layout"))
                         .add_filter("JSON", &["json"])
                         .pick_file()
                     {
@@ -71,7 +72,7 @@ pub fn menu_bar_system(
                     ui.close();
                 }
                 ui.separator();
-                if ui.button("Reset Layout").clicked() {
+                if ui.button(i18n.t("menu-view-reset-layout")).clicked() {
                     tile_state.layout_reset_requested = true;
                     ui.close();
                 }
@@ -79,7 +80,7 @@ pub fn menu_bar_system(
 
             // Window menu — toggle panel visibility
             let panel_list = tile_state.panel_list();
-            ui.menu_button("Window", |ui| {
+            ui.menu_button(i18n.t("menu-window"), |ui| {
                 for (str_id, title, visible) in &panel_list {
                     let text = if *visible {
                         egui::RichText::new(title)
@@ -119,7 +120,10 @@ pub fn menu_bar_system(
             match current_mode.get() {
                 EditorMode::Edit => {
                     if ui
-                        .add_sized([button_w, 18.0], egui::Button::new("Play").fill(btn_fill))
+                        .add_sized(
+                            [button_w, 18.0],
+                            egui::Button::new(i18n.t("toolbar-play")).fill(btn_fill),
+                        )
                         .clicked()
                     {
                         next_mode.set(EditorMode::Play);
@@ -127,13 +131,19 @@ pub fn menu_bar_system(
                 }
                 EditorMode::Play => {
                     if ui
-                        .add_sized([button_w, 18.0], egui::Button::new("Pause").fill(btn_fill))
+                        .add_sized(
+                            [button_w, 18.0],
+                            egui::Button::new(i18n.t("toolbar-pause")).fill(btn_fill),
+                        )
                         .clicked()
                     {
                         next_mode.set(EditorMode::Pause);
                     }
                     if ui
-                        .add_sized([button_w, 18.0], egui::Button::new("Stop").fill(btn_fill))
+                        .add_sized(
+                            [button_w, 18.0],
+                            egui::Button::new(i18n.t("toolbar-stop")).fill(btn_fill),
+                        )
                         .clicked()
                     {
                         next_mode.set(EditorMode::Edit);
@@ -141,13 +151,19 @@ pub fn menu_bar_system(
                 }
                 EditorMode::Pause => {
                     if ui
-                        .add_sized([button_w, 18.0], egui::Button::new("Resume").fill(btn_fill))
+                        .add_sized(
+                            [button_w, 18.0],
+                            egui::Button::new(i18n.t("toolbar-resume")).fill(btn_fill),
+                        )
                         .clicked()
                     {
                         next_mode.set(EditorMode::Play);
                     }
                     if ui
-                        .add_sized([button_w, 18.0], egui::Button::new("Stop").fill(btn_fill))
+                        .add_sized(
+                            [button_w, 18.0],
+                            egui::Button::new(i18n.t("toolbar-stop")).fill(btn_fill),
+                        )
                         .clicked()
                     {
                         next_mode.set(EditorMode::Edit);
@@ -166,6 +182,12 @@ pub struct SettingsPanel {
     pub edited_edit_theme: crate::theme::ThemePreset,
     /// Edited play-mode theme.
     pub edited_play_theme: crate::theme::ThemePreset,
+    /// Edited edit-mode brightness.
+    pub edited_edit_brightness: f32,
+    /// Edited play-mode brightness.
+    pub edited_play_brightness: f32,
+    /// Edited interface language.
+    pub edited_locale: crate::i18n::Locale,
     /// Set to true when user clicks Save.
     pub save_requested: bool,
 }
@@ -175,7 +197,10 @@ impl Default for SettingsPanel {
         Self {
             edited_scale: 1.0,
             edited_edit_theme: crate::theme::ThemePreset::default(),
-            edited_play_theme: crate::theme::ThemePreset::EguiDark,
+            edited_play_theme: crate::theme::ThemePreset::Rerun,
+            edited_edit_brightness: 1.0,
+            edited_play_brightness: 0.6,
+            edited_locale: crate::i18n::Locale::default(),
             save_requested: false,
         }
     }
@@ -216,6 +241,12 @@ impl WorkbenchPanel for SettingsPanel {
                     });
                 ui.end_row();
 
+                ui.label("Edit Brightness:");
+                ui.add(
+                    egui::Slider::new(&mut self.edited_edit_brightness, 0.2..=1.0).step_by(0.05),
+                );
+                ui.end_row();
+
                 ui.label("Play Theme:");
                 egui::ComboBox::from_id_salt("play_theme")
                     .selected_text(self.edited_play_theme.label())
@@ -226,6 +257,22 @@ impl WorkbenchPanel for SettingsPanel {
                                 *preset,
                                 preset.label(),
                             );
+                        }
+                    });
+                ui.end_row();
+
+                ui.label("Play Brightness:");
+                ui.add(
+                    egui::Slider::new(&mut self.edited_play_brightness, 0.2..=1.0).step_by(0.05),
+                );
+                ui.end_row();
+
+                ui.label("Language:");
+                egui::ComboBox::from_id_salt("locale")
+                    .selected_text(self.edited_locale.label())
+                    .show_ui(ui, |ui| {
+                        for locale in crate::i18n::Locale::ALL {
+                            ui.selectable_value(&mut self.edited_locale, *locale, locale.label());
                         }
                     });
                 ui.end_row();

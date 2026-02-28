@@ -84,6 +84,7 @@ pub fn game_view_sync_system(
     mut contexts: bevy_egui::EguiContexts,
     mut tile_state: ResMut<TileLayoutState>,
     mode: Res<State<EditorMode>>,
+    i18n: Res<crate::i18n::I18n>,
 ) {
     // Register texture with egui (once)
     if state.egui_texture_id.is_none() && state.render_target != Handle::default() {
@@ -100,6 +101,7 @@ pub fn game_view_sync_system(
         panel.egui_texture_id = state.egui_texture_id;
         panel.resolution = state.resolution;
         panel.is_playing = is_playing;
+        panel.press_play_text = i18n.t("game-view-press-play");
     }
 }
 
@@ -112,6 +114,8 @@ pub struct GameViewPanel {
     pub resolution: UVec2,
     /// Whether the game is currently playing (has a camera rendering).
     pub is_playing: bool,
+    /// Localized "press play" text.
+    pub press_play_text: String,
 }
 
 impl WorkbenchPanel for GameViewPanel {
@@ -126,7 +130,7 @@ impl WorkbenchPanel for GameViewPanel {
     fn ui(&mut self, ui: &mut egui::Ui) {
         if !self.is_playing {
             ui.centered_and_justified(|ui| {
-                ui.label("Press Play to Start Game");
+                ui.label(&self.press_play_text);
             });
             return;
         }

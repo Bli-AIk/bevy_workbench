@@ -7,6 +7,13 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
+/// Serializable snapshot of the dock layout.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct LayoutData {
+    tree: egui_tiles::Tree<PaneEntry>,
+    panel_names: HashMap<PanelId, String>,
+}
+
 /// Trait for user-defined editor panels.
 pub trait WorkbenchPanel: Send + Sync + std::any::Any + 'static {
     /// Unique panel identifier.
@@ -20,6 +27,11 @@ pub trait WorkbenchPanel: Send + Sync + std::any::Any + 'static {
 
     /// Whether the panel tab can be closed (default: true).
     fn closable(&self) -> bool {
+        true
+    }
+
+    /// Whether the panel is visible in the default layout (default: true).
+    fn default_visible(&self) -> bool {
         true
     }
 }
@@ -41,15 +53,17 @@ pub enum PanelSlot {
 }
 
 /// A pane entry stored in the egui_tiles tree.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PaneEntry {
     pub panel_id: PanelId,
 }
 
 /// Pending panel registration (before tree is built).
+#[allow(dead_code)]
 struct PendingPanel {
     panel: Box<dyn WorkbenchPanel>,
     slot: PanelSlot,
+    visible: bool,
 }
 
 /// Resource holding the tile tree layout and registered panels.
@@ -64,6 +78,10 @@ pub struct TileLayoutState {
     pub(crate) panel_id_map: HashMap<String, PanelId>,
     /// Maps PanelIds to TileIds in the tree (for visibility control).
     pub(crate) panel_tile_map: HashMap<PanelId, egui_tiles::TileId>,
+    /// Set by menu to request layout save.
+    pub(crate) layout_save_requested: bool,
+    /// Set by menu to request layout reset to default.
+    pub(crate) layout_reset_requested: bool,
 }
 
 impl TileLayoutState {
@@ -75,21 +93,47 @@ impl TileLayoutState {
             id if id.contains("game_view") => PanelSlot::Center,
             _ => PanelSlot::Left,
         };
+        let visible = panel.default_visible();
         let id = self.next_id;
         self.next_id += 1;
-        self.pending.push(PendingPanel { panel, slot });
+        self.pending.push(PendingPanel {
+            panel,
+            slot,
+            visible,
+        });
         // Store panel ID for later (actual panel moved into pending)
         id
     }
 
     /// Build the egui_tiles tree from pending panels.
-    /// Layout: Vertical [ Horizontal [ left? | center | right ], bottom ]
-    fn build_tree(&mut self) {
+    /// Tries to load from `layout_path` first; falls back to default layout.
+    fn build_tree(&mut self, layout_path: Option<&std::path::Path>) {
         if self.tree_built {
             return;
         }
-        self.tree_built = true;
 
+        // Move panels from pending into the panels map (needed before load_layout)
+        for pending in self.pending.drain(..) {
+            let id = self.panels.len();
+            let str_id = pending.panel.id().to_string();
+            self.panels.insert(id, pending.panel);
+            self.panel_id_map.insert(str_id, id);
+        }
+
+        // Try loading saved layout
+        if let Some(path) = layout_path
+            && self.load_layout(path)
+        {
+            return;
+        }
+
+        // Fall through to default layout
+        self.tree_built = true;
+        self.build_default_tree();
+    }
+
+    /// Build the default layout from panel slots.
+    fn build_default_tree(&mut self) {
         let mut tiles = egui_tiles::Tiles::default();
 
         // Collect panels by slot
@@ -98,14 +142,20 @@ impl TileLayoutState {
         let mut right_panes = Vec::new();
         let mut bottom_panes = Vec::new();
 
-        for pending in self.pending.drain(..) {
-            let id = self.panels.len();
-            let str_id = pending.panel.id().to_string();
-            self.panels.insert(id, pending.panel);
-            self.panel_id_map.insert(str_id, id);
-            let tile_id = tiles.insert_pane(PaneEntry { panel_id: id });
-            self.panel_tile_map.insert(id, tile_id);
-            match pending.slot {
+        for (str_id, &panel_id) in &self.panel_id_map {
+            let panel = &self.panels[&panel_id];
+            if !panel.default_visible() {
+                continue;
+            }
+            let slot = match str_id.as_str() {
+                id if id.contains("inspector") => PanelSlot::Right,
+                id if id.contains("console") || id.contains("timeline") => PanelSlot::Bottom,
+                id if id.contains("game_view") => PanelSlot::Center,
+                _ => PanelSlot::Left,
+            };
+            let tile_id = tiles.insert_pane(PaneEntry { panel_id });
+            self.panel_tile_map.insert(panel_id, tile_id);
+            match slot {
                 PanelSlot::Left => left_panes.push(tile_id),
                 PanelSlot::Center => center_panes.push(tile_id),
                 PanelSlot::Right => right_panes.push(tile_id),
@@ -193,25 +243,32 @@ impl TileLayoutState {
         let Some(&panel_id) = self.panel_id_map.get(panel_str_id) else {
             return;
         };
-        let Some(&tile_id) = self.panel_tile_map.get(&panel_id) else {
-            return;
-        };
         let Some(tree) = &mut self.tree else { return };
 
-        // Check if this tile is still in a container
-        if tree.tiles.get(tile_id).is_some() {
-            // Tile exists, make sure it's visible
-            tree.tiles.set_visible(tile_id, true);
+        if let Some(&tile_id) = self.panel_tile_map.get(&panel_id) {
+            // Check if this tile is still in a container
+            if tree.tiles.get(tile_id).is_some() {
+                // Tile exists, make sure it's visible
+                tree.tiles.set_visible(tile_id, true);
+            } else {
+                // Tile was removed — re-insert the pane entry
+                let new_tile_id = tree.tiles.insert_pane(PaneEntry { panel_id });
+                self.panel_tile_map.insert(panel_id, new_tile_id);
+
+                // Find the root and insert into it
+                if let Some(root_id) = tree.root() {
+                    tree.move_tile_to_container(new_tile_id, root_id, usize::MAX, false);
+                } else {
+                    tree.root = Some(new_tile_id);
+                }
+            }
         } else {
-            // Tile was removed — re-insert the pane entry
+            // Panel was never added to tree (default_visible=false) — insert fresh
             let new_tile_id = tree.tiles.insert_pane(PaneEntry { panel_id });
             self.panel_tile_map.insert(panel_id, new_tile_id);
-
-            // Find the root and insert into it
             if let Some(root_id) = tree.root() {
                 tree.move_tile_to_container(new_tile_id, root_id, usize::MAX, false);
             } else {
-                // No root — make this the root
                 tree.root = Some(new_tile_id);
             }
         }
@@ -253,6 +310,80 @@ impl TileLayoutState {
         let panel = self.panels.get_mut(panel_id)?;
         // Downcast via Any
         (panel.as_mut() as &mut dyn std::any::Any).downcast_mut::<T>()
+    }
+
+    /// Save the current layout to a file.
+    pub fn save_layout(&self, path: &std::path::Path) {
+        let Some(tree) = &self.tree else { return };
+        // Build reverse map: panel_id → str_id
+        let id_to_str: HashMap<PanelId, String> = self
+            .panel_id_map
+            .iter()
+            .map(|(s, &id)| (id, s.clone()))
+            .collect();
+        let data = LayoutData {
+            tree: tree.clone(),
+            panel_names: id_to_str,
+        };
+        let content = toml::to_string_pretty(&data).expect("serialize layout");
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Err(e) = std::fs::write(path, content) {
+            warn!("Failed to save layout to {}: {e}", path.display());
+        }
+    }
+
+    /// Load layout from a file. Returns true if successful.
+    /// Must be called after all panels are registered but before the tree is built.
+    pub fn load_layout(&mut self, path: &std::path::Path) -> bool {
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        let data: LayoutData = match toml::from_str(&content) {
+            Ok(d) => d,
+            Err(e) => {
+                warn!("Failed to parse layout {}: {e}", path.display());
+                return false;
+            }
+        };
+
+        // Remap panel IDs: saved names → current IDs
+        let mut name_to_current_id: HashMap<String, PanelId> = HashMap::new();
+        for (str_id, &current_id) in &self.panel_id_map {
+            name_to_current_id.insert(str_id.clone(), current_id);
+        }
+
+        // Build old_id → new_id mapping
+        let mut id_remap: HashMap<PanelId, PanelId> = HashMap::new();
+        for (old_id, name) in &data.panel_names {
+            if let Some(&new_id) = name_to_current_id.get(name) {
+                id_remap.insert(*old_id, new_id);
+            }
+        }
+
+        // Clone and remap the tree
+        let mut tree = data.tree;
+        for tile in tree.tiles.tiles_mut() {
+            if let egui_tiles::Tile::Pane(pane) = tile
+                && let Some(&new_id) = id_remap.get(&pane.panel_id)
+            {
+                pane.panel_id = new_id;
+            }
+        }
+
+        // Rebuild panel_tile_map
+        self.panel_tile_map.clear();
+        for (&tile_id, tile) in tree.tiles.iter() {
+            if let egui_tiles::Tile::Pane(pane) = tile {
+                self.panel_tile_map.insert(pane.panel_id, tile_id);
+            }
+        }
+
+        self.tree = Some(tree);
+        self.tree_built = true;
+        true
     }
 }
 
@@ -325,10 +456,42 @@ impl egui_tiles::Behavior<PaneEntry> for WorkbenchBehavior<'_> {
     }
 }
 
+/// Resource holding the layout file path.
+#[derive(Resource)]
+pub struct LayoutPath(pub std::path::PathBuf);
+
+impl Default for LayoutPath {
+    fn default() -> Self {
+        Self(std::path::PathBuf::from(".workbench/layout.toml"))
+    }
+}
+
 /// System that renders the tile layout using EguiContexts.
-pub fn tiles_ui_system(mut contexts: bevy_egui::EguiContexts, mut state: ResMut<TileLayoutState>) {
+pub fn tiles_ui_system(
+    mut contexts: bevy_egui::EguiContexts,
+    mut state: ResMut<TileLayoutState>,
+    layout_path: Res<LayoutPath>,
+) {
     // Build tree on first frame (after all panels registered)
-    state.build_tree();
+    state.build_tree(Some(&layout_path.0));
+
+    // Handle layout save request
+    if state.layout_save_requested {
+        state.layout_save_requested = false;
+        state.save_layout(&layout_path.0);
+        info!("Layout saved to {}", layout_path.0.display());
+    }
+
+    // Handle layout reset request
+    if state.layout_reset_requested {
+        state.layout_reset_requested = false;
+        state.tree = None;
+        state.panel_tile_map.clear();
+        state.build_default_tree();
+        // Delete saved layout file
+        let _ = std::fs::remove_file(&layout_path.0);
+        info!("Layout reset to default");
+    }
 
     let Ok(ctx) = contexts.ctx_mut() else { return };
 

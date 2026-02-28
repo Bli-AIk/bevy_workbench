@@ -49,7 +49,12 @@ pub fn menu_bar_system(
             });
 
             ui.menu_button("View", |ui| {
+                if ui.button("Save Layout").clicked() {
+                    tile_state.layout_save_requested = true;
+                    ui.close();
+                }
                 if ui.button("Reset Layout").clicked() {
+                    tile_state.layout_reset_requested = true;
                     ui.close();
                 }
             });
@@ -178,5 +183,9 @@ impl WorkbenchPanel for SettingsPanel {
         if ui.button("Save").clicked() {
             self.save_requested = true;
         }
+    }
+
+    fn default_visible(&self) -> bool {
+        false
     }
 }

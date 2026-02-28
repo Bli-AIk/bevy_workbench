@@ -69,6 +69,7 @@ impl Plugin for WorkbenchPlugin {
         app.insert_resource(self.config.clone())
             .insert_resource(settings.clone())
             .insert_resource(config_path)
+            .insert_resource(dock::LayoutPath::default())
             .init_state::<mode::EditorMode>()
             .insert_resource(mode::ModeController::default())
             .insert_resource(mode::GameClock::default())

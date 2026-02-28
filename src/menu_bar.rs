@@ -14,6 +14,7 @@ pub fn menu_bar_system(
     mut next_mode: ResMut<NextState<EditorMode>>,
     mut tile_state: ResMut<TileLayoutState>,
     i18n: Res<crate::i18n::I18n>,
+    mut undo_stack: ResMut<crate::undo::UndoStack>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::TopBottomPanel::top("workbench_menu_bar").show(ctx, |ui| {
@@ -21,21 +22,39 @@ pub fn menu_bar_system(
             // Left side: menus
             ui.menu_button(i18n.t("menu-file"), |ui| {
                 if ui.button(i18n.t("menu-file-settings")).clicked() {
-                    tile_state.open_or_focus_panel("settings");
+                    tile_state.request_open_panel("settings");
                     ui.close();
                 }
             });
 
             ui.menu_button(i18n.t("menu-edit"), |ui| {
-                if ui.button(i18n.t("menu-edit-undo")).clicked() {
+                let undo_label = if let Some(desc) = undo_stack.undo_description() {
+                    format!("{} ({})", i18n.t("menu-edit-undo"), desc)
+                } else {
+                    i18n.t("menu-edit-undo")
+                };
+                if ui
+                    .add_enabled(undo_stack.can_undo(), egui::Button::new(undo_label))
+                    .clicked()
+                {
+                    undo_stack.undo_requested = true;
                     ui.close();
                 }
-                if ui.button(i18n.t("menu-edit-redo")).clicked() {
+                let redo_label = if let Some(desc) = undo_stack.redo_description() {
+                    format!("{} ({})", i18n.t("menu-edit-redo"), desc)
+                } else {
+                    i18n.t("menu-edit-redo")
+                };
+                if ui
+                    .add_enabled(undo_stack.can_redo(), egui::Button::new(redo_label))
+                    .clicked()
+                {
+                    undo_stack.redo_requested = true;
                     ui.close();
                 }
                 ui.separator();
                 if ui.button("Keybindings...").clicked() {
-                    tile_state.open_or_focus_panel("keybindings");
+                    tile_state.request_open_panel("keybindings");
                     ui.close();
                 }
             });
@@ -86,7 +105,7 @@ pub fn menu_bar_system(
                                 tile_state.hide_tile(tile_id);
                             }
                         } else {
-                            tile_state.open_or_focus_panel(str_id);
+                            tile_state.request_open_panel(str_id);
                         }
                         ui.close();
                     }

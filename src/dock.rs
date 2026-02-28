@@ -8,12 +8,58 @@ use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 /// Serializable snapshot of the dock layout.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct LayoutData {
     tree: egui_tiles::Tree<PaneEntry>,
     panel_names: HashMap<PanelId, String>,
+}
+
+/// Snapshot of the layout for undo/redo (tree + tile mapping).
+#[derive(Clone)]
+pub(crate) struct LayoutSnapshot {
+    pub tree: egui_tiles::Tree<PaneEntry>,
+    pub panel_tile_map: HashMap<PanelId, egui_tiles::TileId>,
+}
+
+/// Undo action that restores a layout snapshot.
+/// Uses Mutex for interior mutability since UndoAction takes &self.
+pub(crate) struct LayoutUndoAction {
+    before: Mutex<LayoutSnapshot>,
+    after: Mutex<LayoutSnapshot>,
+    desc: String,
+}
+
+impl LayoutUndoAction {
+    pub fn new(desc: impl Into<String>, before: LayoutSnapshot, after: LayoutSnapshot) -> Self {
+        Self {
+            before: Mutex::new(before),
+            after: Mutex::new(after),
+            desc: desc.into(),
+        }
+    }
+}
+
+impl crate::undo::UndoAction for LayoutUndoAction {
+    fn undo(&self, world: &mut World) {
+        let snapshot = self.before.lock().unwrap().clone();
+        world
+            .resource_mut::<TileLayoutState>()
+            .restore_snapshot(snapshot);
+    }
+
+    fn redo(&self, world: &mut World) {
+        let snapshot = self.after.lock().unwrap().clone();
+        world
+            .resource_mut::<TileLayoutState>()
+            .restore_snapshot(snapshot);
+    }
+
+    fn description(&self) -> &str {
+        &self.desc
+    }
 }
 
 /// Trait for user-defined editor panels.
@@ -97,6 +143,8 @@ pub struct TileLayoutState {
     pub(crate) layout_save_path: Option<std::path::PathBuf>,
     /// Path to load layout from (set via file dialog).
     pub(crate) layout_load_path: Option<std::path::PathBuf>,
+    /// Panels requested to open (processed in exclusive system with undo recording).
+    pub(crate) pending_open_requests: Vec<String>,
 }
 
 impl TileLayoutState {
@@ -294,6 +342,46 @@ impl TileLayoutState {
         if let Some(tree) = &mut self.tree {
             tree.tiles.remove(tile_id);
         }
+    }
+
+    /// Close a panel by its string ID.
+    pub fn close_panel(&mut self, panel_str_id: &str) {
+        let Some(&panel_id) = self.panel_id_map.get(panel_str_id) else {
+            return;
+        };
+        if let Some(&tile_id) = self.panel_tile_map.get(&panel_id) {
+            self.hide_tile(tile_id);
+        }
+    }
+
+    /// Request a panel to be opened (with undo recording in the exclusive system).
+    pub fn request_open_panel(&mut self, panel_str_id: &str) {
+        self.pending_open_requests.push(panel_str_id.to_string());
+    }
+
+    /// Build a reverse map from TileId → panel string ID.
+    pub(crate) fn tile_to_panel_str_id_map(&self) -> HashMap<egui_tiles::TileId, String> {
+        let mut map = HashMap::new();
+        for (str_id, &panel_id) in &self.panel_id_map {
+            if let Some(&tile_id) = self.panel_tile_map.get(&panel_id) {
+                map.insert(tile_id, str_id.clone());
+            }
+        }
+        map
+    }
+
+    /// Take a snapshot of the current tree + tile map for undo/redo.
+    pub(crate) fn snapshot(&self) -> Option<LayoutSnapshot> {
+        self.tree.as_ref().map(|tree| LayoutSnapshot {
+            tree: tree.clone(),
+            panel_tile_map: self.panel_tile_map.clone(),
+        })
+    }
+
+    /// Restore a layout snapshot (for undo/redo).
+    pub(crate) fn restore_snapshot(&mut self, snapshot: LayoutSnapshot) {
+        self.tree = Some(snapshot.tree);
+        self.panel_tile_map = snapshot.panel_tile_map;
     }
 
     /// Returns list of (panel_str_id, title, is_visible) for building the Window menu.
@@ -536,6 +624,20 @@ pub fn tiles_ui_system(world: &mut World) {
         (state.tree.take(), std::mem::take(&mut state.panels))
     };
 
+    // Build reverse map before world is borrowed by behavior
+    let tile_to_str_id = {
+        let state = world.resource::<TileLayoutState>();
+        state.tile_to_panel_str_id_map()
+    };
+
+    // Snapshot layout before any modifications (for undo)
+    let before_snapshot = {
+        let state = world.resource::<TileLayoutState>();
+        state.snapshot()
+    };
+
+    let mut closed_panel_ids: Vec<String> = Vec::new();
+
     if let Some(ref mut tree) = tree {
         egui::CentralPanel::default().show(&ctx, |ui| {
             let mut behavior = WorkbenchBehavior {
@@ -546,6 +648,9 @@ pub fn tiles_ui_system(world: &mut World) {
             tree.ui(&mut behavior, ui);
 
             for tile_id in behavior.tiles_to_remove {
+                if let Some(str_id) = tile_to_str_id.get(&tile_id) {
+                    closed_panel_ids.push(str_id.clone());
+                }
                 tree.tiles.remove(tile_id);
             }
         });
@@ -555,4 +660,47 @@ pub fn tiles_ui_system(world: &mut World) {
     let mut state = world.resource_mut::<TileLayoutState>();
     state.tree = tree;
     state.panels = panels;
+
+    // Record undo action with layout snapshots for closed panels
+    if !closed_panel_ids.is_empty() {
+        let after_snapshot = state.snapshot();
+        if let (Some(before), Some(after)) = (before_snapshot.clone(), after_snapshot) {
+            let desc = format!("Close {}", closed_panel_ids.join(", "));
+            // Release state borrow before accessing undo_stack
+            let _ = state;
+            if let Some(mut undo_stack) = world.get_resource_mut::<crate::undo::UndoStack>() {
+                undo_stack.push(LayoutUndoAction::new(desc, before, after));
+            }
+        }
+    }
+
+    // Phase 5: Process pending open requests with undo recording
+    let pending_opens = {
+        let mut state = world.resource_mut::<TileLayoutState>();
+        std::mem::take(&mut state.pending_open_requests)
+    };
+    if !pending_opens.is_empty() {
+        let open_before = {
+            let state = world.resource::<TileLayoutState>();
+            state.snapshot()
+        };
+        {
+            let mut state = world.resource_mut::<TileLayoutState>();
+            for str_id in &pending_opens {
+                state.open_or_focus_panel(str_id);
+            }
+        }
+
+        let open_after = {
+            let state = world.resource::<TileLayoutState>();
+            state.snapshot()
+        };
+
+        if let (Some(before), Some(after)) = (open_before, open_after) {
+            let desc = format!("Open {}", pending_opens.join(", "));
+            if let Some(mut undo_stack) = world.get_resource_mut::<crate::undo::UndoStack>() {
+                undo_stack.push(LayoutUndoAction::new(desc, before, after));
+            }
+        }
+    }
 }

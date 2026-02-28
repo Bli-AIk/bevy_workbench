@@ -136,6 +136,10 @@ pub struct UndoStack {
     redo_stack: Vec<Box<dyn UndoAction>>,
     /// Maximum number of undo history entries.
     pub max_history: usize,
+    /// Set to true to request undo on next frame (for menu buttons).
+    pub undo_requested: bool,
+    /// Set to true to request redo on next frame (for menu buttons).
+    pub redo_requested: bool,
 }
 
 impl Default for UndoStack {
@@ -144,6 +148,8 @@ impl Default for UndoStack {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             max_history: 100,
+            undo_requested: false,
+            redo_requested: false,
         }
     }
 }
@@ -246,7 +252,7 @@ impl UndoStack {
     }
 }
 
-/// System that handles undo/redo keyboard shortcuts.
+/// System that handles undo/redo keyboard shortcuts and menu requests.
 pub fn undo_input_system(world: &mut World) {
     let bindings = world
         .get_resource::<super::keybind::KeyBindings>()
@@ -257,15 +263,26 @@ pub fn undo_input_system(world: &mut World) {
     let do_undo = bindings.undo.just_pressed(input);
     let do_redo = bindings.redo.just_pressed(input);
 
-    if !do_undo && !do_redo {
+    // Also check request flags from menu buttons
+    let (menu_undo, menu_redo) = world
+        .get_resource::<UndoStack>()
+        .map(|s| (s.undo_requested, s.redo_requested))
+        .unwrap_or_default();
+
+    let want_undo = do_undo || menu_undo;
+    let want_redo = do_redo || menu_redo;
+
+    if !want_undo && !want_redo {
         return;
     }
 
     let mut undo_stack = world.remove_resource::<UndoStack>();
     if let Some(ref mut stack) = undo_stack {
-        if do_redo {
+        stack.undo_requested = false;
+        stack.redo_requested = false;
+        if want_redo {
             stack.redo(world);
-        } else if do_undo {
+        } else if want_undo {
             stack.undo(world);
         }
     }

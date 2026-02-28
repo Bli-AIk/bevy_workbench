@@ -18,3 +18,5 @@
 .idea/dictionaries/
 *.iws
 *.sln.DotSettings.user
+
+.workbench/

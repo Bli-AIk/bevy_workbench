@@ -8,7 +8,7 @@
 **bevy_workbench** — 面向 Bevy 的中级编辑器脚手架，定位介于 bevy-inspector-egui 和 Unity/Godot 编辑器之间。
 
 | English                | 简体中文 |
-|------------------------|----------|
+|------------------------|------|
 | [English](./readme.md) | 简体中文 |
 
 ## 简介
@@ -16,63 +16,55 @@
 `bevy_workbench` 是一个基于 egui 的编辑器脚手架，专为 Bevy 游戏项目设计。  
 它提供结构化的编辑器布局、面板系统和主题定制能力，同时不强制施加重量级的场景管理或资产管线。
 
-使用 `bevy_workbench`，你可以快速为 Bevy 游戏搭建开发编辑器，包含检查器、控制台、游戏视图和菜单栏面板。  
-未来将支持通过 `egui_tiles` 实现灵活的瓦片布局、自定义面板注册，以及更深层次的 Bevy ECS 集成。
+使用 `bevy_workbench`，你可以快速为 Bevy 游戏搭建开发编辑器，包含检查器、控制台、游戏视图和菜单栏面板。
 
 ## 功能特性
 
-* **Rerun 风格暗色主题** — 专业设计的暗色 UI 主题，移植自 Rerun 的配色体系
-* **菜单栏** — 顶部菜单栏，包含文件/编辑/视图菜单和播放/停止控制
-* **面板系统** — 内置检查器、控制台和游戏视图面板
-* **编辑器模式** — 编辑 / 播放 / 暂停模式切换，支持键盘快捷键
-* **撤销系统** — 基础撤销/重做栈基础设施
-* **主题 API** — `apply_theme_to_ctx()` 可将暗色主题应用到任意 egui 上下文
-* （计划中）**egui_tiles 集成** — 灵活的面板瓦片布局
-* （计划中）**自定义面板注册** — 通过 trait 实现自定义面板
+* **egui_tiles 停靠布局** — 自由拖拽、重排、分割、关闭和重新打开面板
+* **Rerun 风格暗色主题** — 移植自 Rerun 配色体系的暗色 UI 主题，另有 Catppuccin 和 egui 预设
+* **菜单栏** — 文件/编辑/视图菜单，附带播放/暂停/停止工具栏
+* **检查器** — 基于 bevy-inspector-egui 的实体层级与组件编辑器，支持基于反射快照的撤销
+* **控制台** — tracing 日志桥接，支持严重级别过滤
+* **游戏视图** — 渲染到纹理视口，具备焦点隔离和正确的坐标映射
+* **编辑器模式** — 编辑 / 播放 / 暂停模式切换，配合 GameClock 和 GameSchedule
+* **撤销/重做** — 布局变更、检查器编辑，附带撤销历史面板
+* **自定义面板注册** — 实现 `WorkbenchPanel` trait 并调用 `app.register_panel()`
+* **可配置快捷键** — 点击重新录制，支持添加替代绑定
+* **国际化** — 内置英文 / 中文，可通过自定义 Fluent FTL 源扩展
+* **主题系统** — 按模式配置主题与亮度，多种预设可选
+* **布局持久化** — 以 JSON 格式保存/加载停靠布局
+* **自定义字体** — 系统区域检测，可配置字体路径
+* **设置面板** — UI 缩放、主题、语言和字体配置
 
 ## 使用方法
 
 1. **添加到 `Cargo.toml`**：
    ```toml
    [dependencies]
-   bevy_workbench = { git = "https://github.com/Bli-AIk/bevy_workbench.git" }
+   bevy_workbench = "0.1"
    ```
 
 2. **基本用法**：
    ```rust
    use bevy::prelude::*;
-   use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+   use bevy_workbench::prelude::*;
+   use bevy_workbench::console::console_log_layer;
 
    fn main() {
        App::new()
-           .add_plugins(DefaultPlugins)
+           .add_plugins(
+               DefaultPlugins.set(bevy::log::LogPlugin {
+                   custom_layer: console_log_layer,
+                   ..default()
+               }),
+           )
            .insert_resource(ClearColor(Color::BLACK))
-           .add_plugins(EguiPlugin::default())
+           .add_plugins(WorkbenchPlugin::default())
+           .add_plugins(GameViewPlugin)
            .add_systems(Startup, |mut commands: Commands| {
                commands.spawn(Camera2d);
            })
-           .add_systems(
-               EguiPrimaryContextPass,
-               (apply_theme, editor_ui).chain(),
-           )
            .run();
-   }
-
-   fn apply_theme(mut contexts: EguiContexts, mut done: Local<bool>) {
-       if *done { return; }
-       let Ok(ctx) = contexts.ctx_mut() else { return };
-       bevy_workbench::theme::apply_theme_to_ctx(ctx, None);
-       *done = true;
-   }
-
-   fn editor_ui(mut contexts: EguiContexts) {
-       let Ok(ctx) = contexts.ctx_mut() else { return };
-       egui::SidePanel::left("inspector").show(ctx, |ui| {
-           ui.heading("Inspector");
-       });
-       egui::CentralPanel::default().show(ctx, |ui| {
-           ui.heading("Game View");
-       });
    }
    ```
 
@@ -120,12 +112,14 @@
 
 本项目使用以下 crate：
 
-| Crate                                                              | 版本    | 描述                    |
-|--------------------------------------------------------------------|---------|-------------------------|
-| [bevy](https://crates.io/crates/bevy)                              | 0.18    | 游戏引擎框架            |
-| [bevy_egui](https://crates.io/crates/bevy_egui)                    | 0.39    | Bevy 的 egui 集成       |
-| [bevy-inspector-egui](https://crates.io/crates/bevy-inspector-egui) | 0.36    | ECS 检查器小部件        |
-| [egui](https://crates.io/crates/egui)                              | 0.33    | 即时模式 GUI 库         |
+| Crate                                                               | 版本   | 描述              |
+|---------------------------------------------------------------------|------|-----------------|
+| [bevy](https://crates.io/crates/bevy)                               | 0.18 | 游戏引擎框架          |
+| [bevy_egui](https://crates.io/crates/bevy_egui)                     | 0.39 | Bevy 的 egui 集成  |
+| [bevy-inspector-egui](https://crates.io/crates/bevy-inspector-egui) | 0.36 | ECS 检查器小部件      |
+| [egui](https://crates.io/crates/egui)                               | 0.33 | 即时模式 GUI 库      |
+| [egui_tiles](https://crates.io/crates/egui_tiles)                   | 0.14 | 停靠瓦片布局          |
+| [catppuccin-egui](https://crates.io/crates/catppuccin-egui)         | 5.7  | Catppuccin 主题预设 |
 
 ## 贡献
 
@@ -139,7 +133,8 @@
 
 本项目使用以下任一许可证：
 
-* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) 或 [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0))
+* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE)
+  或 [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0))
 * MIT license ([LICENSE-MIT](LICENSE-MIT) 或 [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT))
 
 由你选择。

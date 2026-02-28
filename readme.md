@@ -7,72 +7,67 @@
 
 **bevy_workbench** — A mid-level editor scaffold for Bevy, between bevy-inspector-egui and Unity/Godot editors.
 
-| English | Simplified Chinese            |
-|---------|-------------------------------|
+| English | Simplified Chinese          |
+|---------|-----------------------------|
 | English | [简体中文](./readme_zh-hans.md) |
 
 ## Introduction
 
 `bevy_workbench` is an egui-based editor scaffold designed for Bevy game projects.  
-It provides a structured editor layout with panels, theming, and extensibility — without imposing heavy scene management or asset pipeline opinions.
+It provides a structured editor layout with panels, theming, and extensibility — without imposing heavy scene management
+or asset pipeline opinions.
 
-With `bevy_workbench`, you can quickly set up a development editor for your Bevy game with inspector, console, game view, and menu bar panels.  
-In the future, it will support tiling layouts via `egui_tiles`, custom panel registration, and deeper Bevy ECS integration.
+With `bevy_workbench`, you can quickly set up a development editor for your Bevy game with inspector, console, game
+view, and menu bar panels.
 
 ## Features
 
-* **Rerun-inspired dark theme** — Professionally designed dark UI theme ported from Rerun's color system
-* **Menu bar** — Top menu bar with File/Edit/View menus and Play/Stop controls
-* **Panel system** — Inspector, Console, and Game View panels out of the box
-* **Editor modes** — Edit / Play / Pause mode switching with keyboard shortcuts
-* **Undo system** — Basic undo/redo stack infrastructure
-* **Theme API** — `apply_theme_to_ctx()` for applying the dark theme to any egui context
-* (Planned) **egui_tiles integration** — Flexible tiling layout for panels
-* (Planned) **Custom panel registration** — Bring your own panels via trait implementation
+* **egui_tiles dock layout** — Drag, rearrange, split, and close/reopen panels freely
+* **Rerun-inspired dark theme** — Dark UI theme ported from Rerun's color system, plus Catppuccin and egui presets
+* **Menu bar** — File/Edit/View menus with Play/Pause/Stop toolbar
+* **Inspector** — Entity hierarchy and component editor powered by bevy-inspector-egui, with undo support via reflection
+  snapshots
+* **Console** — Tracing log bridge with severity filtering
+* **Game View** — Render-to-texture viewport with focus isolation and correct coordinate mapping
+* **Editor modes** — Edit / Play / Pause mode switching with GameClock and GameSchedule
+* **Undo/Redo** — Layout changes, inspector edits, with undo history panel
+* **Custom panel registration** — Implement `WorkbenchPanel` trait and call `app.register_panel()`
+* **Configurable keybindings** — Click to re-record, add alternative bindings
+* **i18n** — English / 中文 built-in, extensible with custom Fluent FTL sources
+* **Theme system** — Per-mode themes with brightness control, multiple presets
+* **Layout persistence** — Save/load dock layouts as JSON
+* **Custom font support** — System locale detection with configurable font path
+* **Settings panel** — UI scale, theme, locale, and font configuration
 
 ## How to Use
 
 1. **Add to your `Cargo.toml`**:
    ```toml
    [dependencies]
-   bevy_workbench = { git = "https://github.com/Bli-AIk/bevy_workbench.git" }
+   bevy_workbench = "0.1"
    ```
 
 2. **Basic setup**:
    ```rust
    use bevy::prelude::*;
-   use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+   use bevy_workbench::prelude::*;
+   use bevy_workbench::console::console_log_layer;
 
    fn main() {
        App::new()
-           .add_plugins(DefaultPlugins)
+           .add_plugins(
+               DefaultPlugins.set(bevy::log::LogPlugin {
+                   custom_layer: console_log_layer,
+                   ..default()
+               }),
+           )
            .insert_resource(ClearColor(Color::BLACK))
-           .add_plugins(EguiPlugin::default())
+           .add_plugins(WorkbenchPlugin::default())
+           .add_plugins(GameViewPlugin)
            .add_systems(Startup, |mut commands: Commands| {
                commands.spawn(Camera2d);
            })
-           .add_systems(
-               EguiPrimaryContextPass,
-               (apply_theme, editor_ui).chain(),
-           )
            .run();
-   }
-
-   fn apply_theme(mut contexts: EguiContexts, mut done: Local<bool>) {
-       if *done { return; }
-       let Ok(ctx) = contexts.ctx_mut() else { return };
-       bevy_workbench::theme::apply_theme_to_ctx(ctx, None);
-       *done = true;
-   }
-
-   fn editor_ui(mut contexts: EguiContexts) {
-       let Ok(ctx) = contexts.ctx_mut() else { return };
-       egui::SidePanel::left("inspector").show(ctx, |ui| {
-           ui.heading("Inspector");
-       });
-       egui::CentralPanel::default().show(ctx, |ui| {
-           ui.heading("Game View");
-       });
    }
    ```
 
@@ -120,12 +115,14 @@ In the future, it will support tiling layouts via `egui_tiles`, custom panel reg
 
 This project uses the following crates:
 
-| Crate                                                              | Version | Description                              |
-|--------------------------------------------------------------------|---------|------------------------------------------|
-| [bevy](https://crates.io/crates/bevy)                              | 0.18    | Game engine framework                    |
-| [bevy_egui](https://crates.io/crates/bevy_egui)                    | 0.39    | egui integration for Bevy                |
-| [bevy-inspector-egui](https://crates.io/crates/bevy-inspector-egui) | 0.36    | ECS inspector widgets                   |
-| [egui](https://crates.io/crates/egui)                              | 0.33    | Immediate mode GUI library               |
+| Crate                                                               | Version | Description                |
+|---------------------------------------------------------------------|---------|----------------------------|
+| [bevy](https://crates.io/crates/bevy)                               | 0.18    | Game engine framework      |
+| [bevy_egui](https://crates.io/crates/bevy_egui)                     | 0.39    | egui integration for Bevy  |
+| [bevy-inspector-egui](https://crates.io/crates/bevy-inspector-egui) | 0.36    | ECS inspector widgets      |
+| [egui](https://crates.io/crates/egui)                               | 0.33    | Immediate mode GUI library |
+| [egui_tiles](https://crates.io/crates/egui_tiles)                   | 0.14    | Tiling dock layout         |
+| [catppuccin-egui](https://crates.io/crates/catppuccin-egui)         | 5.7     | Catppuccin theme presets   |
 
 ## Contributing
 
@@ -139,7 +136,8 @@ Whether you want to fix a bug, add a feature, or improve documentation:
 
 This project is licensed under either of
 
-* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0))
+* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE)
+  or [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0))
 * MIT license ([LICENSE-MIT](LICENSE-MIT) or [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT))
 
 at your option.

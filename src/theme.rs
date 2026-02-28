@@ -1,11 +1,101 @@
-//! Rerun-inspired dark theme for the workbench editor.
+//! Theme system for the workbench editor.
 //!
-//! Colors extracted from rerun's `re_ui` design tokens (dark_theme.ron + color_table.ron).
+//! Supports built-in themes (Rerun dark, egui Dark/Light) and Catppuccin palette themes.
+//! Each mode (Edit vs Play/Pause) can have a different theme.
 
 use bevy::prelude::*;
 use egui::{Color32, Stroke, Vec2, epaint::Shadow};
 
-/// Rerun gray scale.
+/// Available theme presets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum ThemePreset {
+    /// Rerun-inspired dark theme (custom).
+    #[default]
+    Rerun,
+    /// Standard egui dark theme.
+    EguiDark,
+    /// Standard egui light theme.
+    EguiLight,
+    /// Catppuccin Mocha (dark).
+    CatppuccinMocha,
+    /// Catppuccin Macchiato (dark).
+    CatppuccinMacchiato,
+    /// Catppuccin Frappé (medium).
+    CatppuccinFrappe,
+    /// Catppuccin Latte (light).
+    CatppuccinLatte,
+}
+
+impl ThemePreset {
+    /// All available presets.
+    pub const ALL: &[ThemePreset] = &[
+        ThemePreset::Rerun,
+        ThemePreset::EguiDark,
+        ThemePreset::EguiLight,
+        ThemePreset::CatppuccinMocha,
+        ThemePreset::CatppuccinMacchiato,
+        ThemePreset::CatppuccinFrappe,
+        ThemePreset::CatppuccinLatte,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            ThemePreset::Rerun => "Rerun Dark",
+            ThemePreset::EguiDark => "egui Dark",
+            ThemePreset::EguiLight => "egui Light",
+            ThemePreset::CatppuccinMocha => "Catppuccin Mocha",
+            ThemePreset::CatppuccinMacchiato => "Catppuccin Macchiato",
+            ThemePreset::CatppuccinFrappe => "Catppuccin Frappé",
+            ThemePreset::CatppuccinLatte => "Catppuccin Latte",
+        }
+    }
+}
+
+/// Theme configuration stored in settings.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ThemeConfig {
+    /// Theme used in Edit mode.
+    #[serde(default)]
+    pub edit_theme: ThemePreset,
+    /// Theme used in Play/Pause mode.
+    #[serde(default = "default_play_theme")]
+    pub play_theme: ThemePreset,
+}
+
+fn default_play_theme() -> ThemePreset {
+    ThemePreset::EguiDark
+}
+
+impl Default for ThemeConfig {
+    fn default() -> Self {
+        Self {
+            edit_theme: ThemePreset::Rerun,
+            play_theme: default_play_theme(),
+        }
+    }
+}
+
+/// Resource holding the current theme configuration.
+#[derive(Resource, Default)]
+pub struct ThemeState {
+    /// Minimum interactive element size in points (larger on touch devices).
+    pub interact_size: Option<Vec2>,
+    /// Current theme configuration.
+    pub config: ThemeConfig,
+}
+
+impl ThemeState {
+    /// Create a theme state optimized for touch devices (Android).
+    pub fn touch() -> Self {
+        Self {
+            interact_size: Some(Vec2::new(44.0, 44.0)),
+            ..Default::default()
+        }
+    }
+}
+
+// ─── Rerun color palette ─────────────────────────────────────────────
+
 pub mod gray {
     use egui::Color32;
     pub const S0: Color32 = Color32::from_rgb(0x00, 0x00, 0x00);
@@ -35,7 +125,6 @@ pub mod blue {
     pub const S900: Color32 = Color32::from_rgb(0xf0, 0xf2, 0xff);
 }
 
-// Color constants for UI panels.
 pub const PANEL_BG: Color32 = gray::S100;
 pub const HEADER_BG: Color32 = gray::S150;
 pub const ROW_EVEN_BG: Color32 = gray::S100;
@@ -47,21 +136,7 @@ pub const TEXT_SUBDUED: Color32 = gray::S550;
 pub const TEXT_DEFAULT: Color32 = gray::S775;
 pub const TEXT_STRONG: Color32 = gray::S1000;
 
-/// Resource holding the current theme configuration.
-#[derive(Resource, Default)]
-pub struct ThemeState {
-    /// Minimum interactive element size in points (larger on touch devices).
-    pub interact_size: Option<Vec2>,
-}
-
-impl ThemeState {
-    /// Create a theme state optimized for touch devices (Android).
-    pub fn touch() -> Self {
-        Self {
-            interact_size: Some(Vec2::new(44.0, 44.0)),
-        }
-    }
-}
+// ─── Theme application ──────────────────────────────────────────────
 
 /// Darken a Color32 by a factor (0.0 = black, 1.0 = unchanged).
 fn dim_color(c: Color32, factor: f32) -> Color32 {
@@ -77,13 +152,83 @@ fn dim_stroke(s: Stroke, factor: f32) -> Stroke {
     Stroke::new(s.width, dim_color(s.color, factor))
 }
 
-/// Apply the Rerun-inspired dark theme to an egui context.
+/// Apply a theme preset to an egui context.
 /// `brightness` = 1.0 for normal, < 1.0 to dim (e.g. 0.6 in Play mode).
 pub fn apply_theme_to_ctx(
+    ctx: &egui::Context,
+    preset: ThemePreset,
+    interact_size_override: Option<Vec2>,
+    brightness: f32,
+) {
+    match preset {
+        ThemePreset::Rerun => apply_rerun_theme(ctx, interact_size_override, brightness),
+        ThemePreset::EguiDark => {
+            ctx.set_visuals(egui::Visuals::dark());
+            apply_brightness_and_overrides(ctx, interact_size_override, brightness);
+        }
+        ThemePreset::EguiLight => {
+            ctx.set_visuals(egui::Visuals::light());
+            apply_brightness_and_overrides(ctx, interact_size_override, brightness);
+        }
+        ThemePreset::CatppuccinMocha => {
+            catppuccin_egui::set_theme(ctx, catppuccin_egui::MOCHA);
+            apply_brightness_and_overrides(ctx, interact_size_override, brightness);
+        }
+        ThemePreset::CatppuccinMacchiato => {
+            catppuccin_egui::set_theme(ctx, catppuccin_egui::MACCHIATO);
+            apply_brightness_and_overrides(ctx, interact_size_override, brightness);
+        }
+        ThemePreset::CatppuccinFrappe => {
+            catppuccin_egui::set_theme(ctx, catppuccin_egui::FRAPPE);
+            apply_brightness_and_overrides(ctx, interact_size_override, brightness);
+        }
+        ThemePreset::CatppuccinLatte => {
+            catppuccin_egui::set_theme(ctx, catppuccin_egui::LATTE);
+            apply_brightness_and_overrides(ctx, interact_size_override, brightness);
+        }
+    }
+}
+
+/// Apply brightness dimming and interact_size override on top of an existing style.
+fn apply_brightness_and_overrides(
     ctx: &egui::Context,
     interact_size_override: Option<Vec2>,
     brightness: f32,
 ) {
+    if brightness >= 1.0 && interact_size_override.is_none() {
+        return;
+    }
+    let mut style = (*ctx.style()).clone();
+    if let Some(size) = interact_size_override {
+        style.spacing.interact_size = size;
+    }
+    if brightness < 1.0 {
+        let b = brightness;
+        style.visuals.faint_bg_color = dim_color(style.visuals.faint_bg_color, b);
+        style.visuals.extreme_bg_color = dim_color(style.visuals.extreme_bg_color, b);
+        style.visuals.panel_fill = dim_color(style.visuals.panel_fill, b);
+        style.visuals.window_fill = dim_color(style.visuals.window_fill, b);
+        style.visuals.selection.bg_fill = dim_color(style.visuals.selection.bg_fill, b);
+        style.visuals.selection.stroke = dim_stroke(style.visuals.selection.stroke, b);
+        style.visuals.hyperlink_color = dim_color(style.visuals.hyperlink_color, b);
+        for w in [
+            &mut style.visuals.widgets.noninteractive,
+            &mut style.visuals.widgets.inactive,
+            &mut style.visuals.widgets.hovered,
+            &mut style.visuals.widgets.active,
+            &mut style.visuals.widgets.open,
+        ] {
+            w.weak_bg_fill = dim_color(w.weak_bg_fill, b);
+            w.bg_fill = dim_color(w.bg_fill, b);
+            w.bg_stroke = dim_stroke(w.bg_stroke, b);
+            w.fg_stroke = dim_stroke(w.fg_stroke, b);
+        }
+    }
+    ctx.set_style(style);
+}
+
+/// Apply the Rerun-inspired dark theme.
+fn apply_rerun_theme(ctx: &egui::Context, interact_size_override: Option<Vec2>, brightness: f32) {
     let mut style = (*ctx.style()).clone();
 
     // Typography
@@ -218,10 +363,12 @@ pub fn apply_theme_system(
     }
     *prev_mode = Some(*mode.get());
     let Ok(ctx) = contexts.ctx_mut() else { return };
-    let brightness = match mode.get() {
-        crate::mode::EditorMode::Edit => 1.0,
-        crate::mode::EditorMode::Play | crate::mode::EditorMode::Pause => 0.6,
+    let (preset, brightness) = match mode.get() {
+        crate::mode::EditorMode::Edit => (theme.config.edit_theme, 1.0),
+        crate::mode::EditorMode::Play | crate::mode::EditorMode::Pause => {
+            (theme.config.play_theme, 0.6)
+        }
     };
-    apply_theme_to_ctx(ctx, theme.interact_size, brightness);
+    apply_theme_to_ctx(ctx, preset, theme.interact_size, brightness);
     *applied = true;
 }

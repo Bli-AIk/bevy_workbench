@@ -11,5 +11,5 @@ pub use crate::game_view::{GameViewCamera, GameViewPanel, GameViewPlugin, GameVi
 pub use crate::inspector::InspectorPanel;
 pub use crate::layout::{LayoutMode, LayoutState};
 pub use crate::mode::{EditorMode, GameClock, GameSchedule, ModeController, on_fresh_play};
-pub use crate::theme::ThemeState;
+pub use crate::theme::{ThemeConfig, ThemePreset, ThemeState};
 pub use crate::undo::{UndoAction, UndoStack};

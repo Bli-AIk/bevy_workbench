@@ -79,7 +79,10 @@ impl Plugin for WorkbenchPlugin {
             .insert_resource(dock::TileLayoutState::default())
             .insert_resource(console::ConsoleState::default())
             .insert_resource(inspector::InspectorSelection::default())
-            .insert_resource(theme::ThemeState::default())
+            .insert_resource(theme::ThemeState {
+                config: settings.theme.clone(),
+                ..Default::default()
+            })
             .add_systems(Update, layout::detect_layout_system)
             .add_systems(Update, mode::mode_input_system)
             .add_systems(Update, mode::run_game_schedule_system)
@@ -107,9 +110,11 @@ impl Plugin for WorkbenchPlugin {
         if self.config.show_console {
             app.register_panel(console::ConsolePanel);
         }
-        // Settings panel initialized with loaded scale
+        // Settings panel initialized with loaded values
         let settings_panel = menu_bar::SettingsPanel {
             edited_scale: settings.ui_scale,
+            edited_edit_theme: settings.theme.edit_theme,
+            edited_play_theme: settings.theme.play_theme,
             ..Default::default()
         };
         app.register_panel(settings_panel);

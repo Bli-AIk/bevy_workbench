@@ -162,6 +162,10 @@ pub fn menu_bar_system(
 pub struct SettingsPanel {
     /// Edited scale value (not yet saved).
     pub edited_scale: f32,
+    /// Edited edit-mode theme.
+    pub edited_edit_theme: crate::theme::ThemePreset,
+    /// Edited play-mode theme.
+    pub edited_play_theme: crate::theme::ThemePreset,
     /// Set to true when user clicks Save.
     pub save_requested: bool,
 }
@@ -170,6 +174,8 @@ impl Default for SettingsPanel {
     fn default() -> Self {
         Self {
             edited_scale: 1.0,
+            edited_edit_theme: crate::theme::ThemePreset::default(),
+            edited_play_theme: crate::theme::ThemePreset::EguiDark,
             save_requested: false,
         }
     }
@@ -194,6 +200,34 @@ impl WorkbenchPanel for SettingsPanel {
             .show(ui, |ui| {
                 ui.label("UI Scale:");
                 ui.add(egui::Slider::new(&mut self.edited_scale, 0.5..=2.0).step_by(0.25));
+                ui.end_row();
+
+                ui.label("Edit Theme:");
+                egui::ComboBox::from_id_salt("edit_theme")
+                    .selected_text(self.edited_edit_theme.label())
+                    .show_ui(ui, |ui| {
+                        for preset in crate::theme::ThemePreset::ALL {
+                            ui.selectable_value(
+                                &mut self.edited_edit_theme,
+                                *preset,
+                                preset.label(),
+                            );
+                        }
+                    });
+                ui.end_row();
+
+                ui.label("Play Theme:");
+                egui::ComboBox::from_id_salt("play_theme")
+                    .selected_text(self.edited_play_theme.label())
+                    .show_ui(ui, |ui| {
+                        for preset in crate::theme::ThemePreset::ALL {
+                            ui.selectable_value(
+                                &mut self.edited_play_theme,
+                                *preset,
+                                preset.label(),
+                            );
+                        }
+                    });
                 ui.end_row();
             });
 

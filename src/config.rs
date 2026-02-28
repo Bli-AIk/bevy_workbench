@@ -9,6 +9,9 @@ pub struct WorkbenchSettings {
     /// UI scale factor (1.0 = default).
     #[serde(default = "default_ui_scale")]
     pub ui_scale: f32,
+    /// Theme configuration.
+    #[serde(default)]
+    pub theme: crate::theme::ThemeConfig,
 }
 
 fn default_ui_scale() -> f32 {
@@ -17,7 +20,10 @@ fn default_ui_scale() -> f32 {
 
 impl Default for WorkbenchSettings {
     fn default() -> Self {
-        Self { ui_scale: 1.0 }
+        Self {
+            ui_scale: 1.0,
+            theme: crate::theme::ThemeConfig::default(),
+        }
     }
 }
 
@@ -62,6 +68,7 @@ pub fn config_apply_system(
     config_path: Res<ConfigPath>,
     mut egui_contexts: Query<&mut bevy_egui::EguiContextSettings>,
     mut tile_state: ResMut<crate::dock::TileLayoutState>,
+    mut theme_state: ResMut<crate::theme::ThemeState>,
 ) {
     // Check if SettingsPanel has a pending save
     if let Some(panel) = tile_state.get_panel_mut::<crate::menu_bar::SettingsPanel>("settings")
@@ -69,6 +76,10 @@ pub fn config_apply_system(
     {
         panel.save_requested = false;
         settings.ui_scale = panel.edited_scale;
+        settings.theme.edit_theme = panel.edited_edit_theme;
+        settings.theme.play_theme = panel.edited_play_theme;
+        // Apply theme changes to runtime state
+        theme_state.config = settings.theme.clone();
         settings.save(&config_path.0);
     }
 

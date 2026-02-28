@@ -131,7 +131,10 @@ impl Default for KeyBindings {
     fn default() -> Self {
         Self {
             undo: KeyBindSlot::from(vec![KeyBind::ctrl(KeyCode::KeyZ)]),
-            redo: KeyBindSlot::from(vec![KeyBind::ctrl_shift(KeyCode::KeyZ)]),
+            redo: KeyBindSlot::from(vec![
+                KeyBind::ctrl_shift(KeyCode::KeyZ),
+                KeyBind::ctrl(KeyCode::KeyY),
+            ]),
             play_stop: KeyBindSlot::from(vec![
                 KeyBind::key(KeyCode::F5),
                 KeyBind::ctrl(KeyCode::KeyP),

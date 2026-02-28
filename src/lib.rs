@@ -18,6 +18,7 @@ pub mod font;
 pub mod game_view;
 pub mod i18n;
 pub mod inspector;
+pub mod keybind;
 pub mod layout;
 pub mod menu_bar;
 pub mod mode;
@@ -77,6 +78,7 @@ impl Plugin for WorkbenchPlugin {
             .insert_resource(mode::GameClock::default())
             .init_schedule(mode::GameSchedule)
             .insert_resource(undo::UndoStack::default())
+            .init_resource::<keybind::KeyBindings>()
             .insert_resource(layout::LayoutState::new(self.config.layout))
             .insert_resource(dock::TileLayoutState::default())
             .init_resource::<console::ConsoleState>()
@@ -136,6 +138,7 @@ impl Plugin for WorkbenchPlugin {
             ..Default::default()
         };
         app.register_panel(settings_panel);
+        app.register_panel(menu_bar::KeybindingsPanel);
     }
 }
 

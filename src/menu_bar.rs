@@ -33,6 +33,11 @@ pub fn menu_bar_system(
                 if ui.button(i18n.t("menu-edit-redo")).clicked() {
                     ui.close();
                 }
+                ui.separator();
+                if ui.button("Keybindings...").clicked() {
+                    tile_state.open_or_focus_panel("keybindings");
+                    ui.close();
+                }
             });
 
             ui.menu_button(i18n.t("menu-view"), |ui| {
@@ -297,4 +302,70 @@ impl SettingsPanel {
             self.save_requested = true;
         }
     }
+}
+
+/// Keybindings settings panel — allows users to view and modify editor keybindings.
+pub struct KeybindingsPanel;
+
+impl WorkbenchPanel for KeybindingsPanel {
+    fn id(&self) -> &str {
+        "keybindings"
+    }
+
+    fn title(&self) -> String {
+        "Keybindings".to_string()
+    }
+
+    fn ui(&mut self, _ui: &mut egui::Ui) {}
+
+    fn ui_world(&mut self, ui: &mut egui::Ui, world: &mut World) {
+        let mut bindings = world
+            .remove_resource::<crate::keybind::KeyBindings>()
+            .unwrap_or_default();
+
+        egui::Frame::NONE
+            .inner_margin(egui::Margin::same(8))
+            .show(ui, |ui| {
+                ui.heading("Keybindings");
+                ui.separator();
+
+                egui::Grid::new("keybind_grid")
+                    .num_columns(2)
+                    .spacing([12.0, 8.0])
+                    .show(ui, |ui| {
+                        keybind_row(ui, "Undo", &mut bindings.undo);
+                        keybind_row(ui, "Redo", &mut bindings.redo);
+                        keybind_row(ui, "Play / Stop", &mut bindings.play_stop);
+                        keybind_row(ui, "Pause / Resume", &mut bindings.pause_resume);
+                    });
+
+                ui.separator();
+                if ui.button("Reset to Defaults").clicked() {
+                    bindings = crate::keybind::KeyBindings::default();
+                }
+            });
+
+        world.insert_resource(bindings);
+    }
+
+    fn needs_world(&self) -> bool {
+        true
+    }
+
+    fn default_visible(&self) -> bool {
+        false
+    }
+}
+
+/// Helper to draw a keybinding row in the settings grid.
+fn keybind_row(ui: &mut egui::Ui, label: &str, slot: &mut crate::keybind::KeyBindSlot) {
+    ui.label(label);
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new(slot.label())
+                .monospace()
+                .background_color(gray::S300),
+        );
+    });
+    ui.end_row();
 }

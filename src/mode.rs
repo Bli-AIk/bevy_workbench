@@ -93,20 +93,21 @@ pub fn mode_input_system(
     input: Res<ButtonInput<KeyCode>>,
     current_mode: Res<State<EditorMode>>,
     mut next_mode: ResMut<NextState<EditorMode>>,
+    bindings: Option<Res<super::keybind::KeyBindings>>,
 ) {
-    let ctrl = input.pressed(KeyCode::ControlLeft) || input.pressed(KeyCode::ControlRight);
-    let shift = input.pressed(KeyCode::ShiftLeft) || input.pressed(KeyCode::ShiftRight);
+    let default_bindings = super::keybind::KeyBindings::default();
+    let bindings = bindings.as_deref().unwrap_or(&default_bindings);
 
-    // F5 or Ctrl+P: Play/Stop toggle
-    if input.just_pressed(KeyCode::F5) || (ctrl && input.just_pressed(KeyCode::KeyP) && !shift) {
+    // Play/Stop toggle
+    if bindings.play_stop.just_pressed(&input) {
         match current_mode.get() {
             EditorMode::Edit => next_mode.set(EditorMode::Play),
             EditorMode::Play | EditorMode::Pause => next_mode.set(EditorMode::Edit),
         }
     }
 
-    // Ctrl+Shift+P: Pause/Resume
-    if ctrl && shift && input.just_pressed(KeyCode::KeyP) {
+    // Pause/Resume
+    if bindings.pause_resume.just_pressed(&input) {
         match current_mode.get() {
             EditorMode::Play => next_mode.set(EditorMode::Pause),
             EditorMode::Pause => next_mode.set(EditorMode::Play),

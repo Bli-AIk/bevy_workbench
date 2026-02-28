@@ -60,6 +60,75 @@ impl<T: Resource + Clone + 'static> UndoAction for ResourceUndoAction<T> {
     }
 }
 
+/// Undo action that groups multiple actions into one.
+/// Undo/redo applies all actions in reverse/forward order.
+pub struct GroupUndoAction {
+    actions: Vec<Box<dyn UndoAction>>,
+    desc: String,
+}
+
+impl GroupUndoAction {
+    pub fn new(desc: impl Into<String>, actions: Vec<Box<dyn UndoAction>>) -> Self {
+        Self {
+            actions,
+            desc: desc.into(),
+        }
+    }
+}
+
+impl UndoAction for GroupUndoAction {
+    fn undo(&self, world: &mut World) {
+        for action in self.actions.iter().rev() {
+            action.undo(world);
+        }
+    }
+
+    fn redo(&self, world: &mut World) {
+        for action in &self.actions {
+            action.redo(world);
+        }
+    }
+
+    fn description(&self) -> &str {
+        &self.desc
+    }
+}
+
+/// A closure-based undo action for custom one-off operations.
+pub struct ClosureUndoAction {
+    undo_fn: Box<dyn Fn(&mut World) + Send + Sync>,
+    redo_fn: Box<dyn Fn(&mut World) + Send + Sync>,
+    desc: String,
+}
+
+impl ClosureUndoAction {
+    pub fn new(
+        desc: impl Into<String>,
+        undo_fn: impl Fn(&mut World) + Send + Sync + 'static,
+        redo_fn: impl Fn(&mut World) + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            undo_fn: Box::new(undo_fn),
+            redo_fn: Box::new(redo_fn),
+            desc: desc.into(),
+        }
+    }
+}
+
+impl UndoAction for ClosureUndoAction {
+    fn undo(&self, world: &mut World) {
+        (self.undo_fn)(world);
+    }
+
+    fn redo(&self, world: &mut World) {
+        (self.redo_fn)(world);
+    }
+
+    fn description(&self) -> &str {
+        &self.desc
+    }
+}
+
 /// Resource that manages the undo/redo stack.
 #[derive(Resource)]
 pub struct UndoStack {
@@ -115,6 +184,15 @@ impl UndoStack {
         }
     }
 
+    /// Push a boxed undo action.
+    pub fn push_boxed(&mut self, action: Box<dyn UndoAction>) {
+        self.redo_stack.clear();
+        self.undo_stack.push(action);
+        if self.undo_stack.len() > self.max_history {
+            self.undo_stack.remove(0);
+        }
+    }
+
     /// Undo the last action.
     pub fn undo(&mut self, world: &mut World) {
         if let Some(action) = self.undo_stack.pop() {
@@ -131,6 +209,12 @@ impl UndoStack {
         }
     }
 
+    /// Clear all history.
+    pub fn clear(&mut self) {
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+    }
+
     /// Whether there are actions to undo.
     pub fn can_undo(&self) -> bool {
         !self.undo_stack.is_empty()
@@ -139,6 +223,16 @@ impl UndoStack {
     /// Whether there are actions to redo.
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
+    }
+
+    /// Number of actions in the undo stack.
+    pub fn undo_count(&self) -> usize {
+        self.undo_stack.len()
+    }
+
+    /// Number of actions in the redo stack.
+    pub fn redo_count(&self) -> usize {
+        self.redo_stack.len()
     }
 
     /// Description of the last undo-able action.
@@ -152,28 +246,26 @@ impl UndoStack {
     }
 }
 
-/// System that handles Ctrl+Z / Ctrl+Shift+Z keyboard shortcuts.
+/// System that handles undo/redo keyboard shortcuts.
 pub fn undo_input_system(world: &mut World) {
-    let ctrl_pressed;
-    let shift_pressed;
-    let z_just_pressed;
+    let bindings = world
+        .get_resource::<super::keybind::KeyBindings>()
+        .cloned()
+        .unwrap_or_default();
+    let input = world.resource::<ButtonInput<KeyCode>>();
 
-    {
-        let input = world.resource::<ButtonInput<KeyCode>>();
-        ctrl_pressed = input.pressed(KeyCode::ControlLeft) || input.pressed(KeyCode::ControlRight);
-        shift_pressed = input.pressed(KeyCode::ShiftLeft) || input.pressed(KeyCode::ShiftRight);
-        z_just_pressed = input.just_pressed(KeyCode::KeyZ);
-    }
+    let do_undo = bindings.undo.just_pressed(input);
+    let do_redo = bindings.redo.just_pressed(input);
 
-    if !ctrl_pressed || !z_just_pressed {
+    if !do_undo && !do_redo {
         return;
     }
 
     let mut undo_stack = world.remove_resource::<UndoStack>();
     if let Some(ref mut stack) = undo_stack {
-        if shift_pressed {
+        if do_redo {
             stack.redo(world);
-        } else {
+        } else if do_undo {
             stack.undo(world);
         }
     }

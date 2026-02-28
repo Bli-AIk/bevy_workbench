@@ -11,6 +11,7 @@ pub use crate::font::FontConfig;
 pub use crate::game_view::{GameViewCamera, GameViewPanel, GameViewPlugin, GameViewState};
 pub use crate::i18n::{I18n, Locale};
 pub use crate::inspector::InspectorPanel;
+pub use crate::keybind::{KeyBind, KeyBindSlot, KeyBindings};
 pub use crate::layout::{LayoutMode, LayoutState};
 pub use crate::mode::{EditorMode, GameClock, GameSchedule, ModeController, on_fresh_play};
 pub use crate::theme::{ThemeConfig, ThemePreset, ThemeState};

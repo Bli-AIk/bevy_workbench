@@ -4,7 +4,9 @@
 //! - Root: Vertical split (main area + bottom console)
 //! - Main area: Horizontal split (game view + right inspector)
 
+use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
+use bevy_egui::PrimaryEguiContext;
 use std::collections::HashMap;
 
 /// Serializable snapshot of the dock layout.
@@ -22,8 +24,19 @@ pub trait WorkbenchPanel: Send + Sync + std::any::Any + 'static {
     /// Panel title displayed on the tab.
     fn title(&self) -> String;
 
-    /// Draw the panel UI.
+    /// Draw the panel UI (no ECS access).
     fn ui(&mut self, ui: &mut egui::Ui);
+
+    /// Draw the panel UI with ECS world access (for inspector, etc.).
+    /// Default implementation delegates to `ui()`.
+    fn ui_world(&mut self, ui: &mut egui::Ui, _world: &mut World) {
+        self.ui(ui);
+    }
+
+    /// Whether this panel needs World access in `ui_world`.
+    fn needs_world(&self) -> bool {
+        false
+    }
 
     /// Whether the panel tab can be closed (default: true).
     fn closable(&self) -> bool {
@@ -392,6 +405,8 @@ impl TileLayoutState {
 /// Adapter between egui_tiles::Behavior and our WorkbenchPanel system.
 struct WorkbenchBehavior<'a> {
     panels: &'a mut HashMap<PanelId, Box<dyn WorkbenchPanel>>,
+    /// World access for panels that need it (inspector, etc.).
+    world: Option<&'a mut World>,
     /// Tile IDs to remove from the tree after the UI pass.
     tiles_to_remove: Vec<egui_tiles::TileId>,
 }
@@ -412,7 +427,15 @@ impl egui_tiles::Behavior<PaneEntry> for WorkbenchBehavior<'_> {
         pane: &mut PaneEntry,
     ) -> egui_tiles::UiResponse {
         if let Some(panel) = self.panels.get_mut(&pane.panel_id) {
-            panel.ui(ui);
+            if panel.needs_world() {
+                if let Some(world) = self.world.as_deref_mut() {
+                    panel.ui_world(ui, world);
+                } else {
+                    panel.ui(ui);
+                }
+            } else {
+                panel.ui(ui);
+            }
         }
         egui_tiles::UiResponse::None
     }
@@ -468,56 +491,68 @@ impl Default for LayoutPath {
     }
 }
 
-/// System that renders the tile layout using EguiContexts.
-pub fn tiles_ui_system(
-    mut contexts: bevy_egui::EguiContexts,
-    mut state: ResMut<TileLayoutState>,
-    layout_path: Res<LayoutPath>,
-) {
-    // Build tree on first frame (after all panels registered)
-    state.build_tree(Some(&layout_path.0));
+/// Exclusive system that renders the tile layout with World access for panels.
+pub fn tiles_ui_system(world: &mut World) {
+    // Phase 1: Build tree & handle save/load/reset
+    world.resource_scope(|world, mut state: Mut<TileLayoutState>| {
+        let layout_path = world.resource::<LayoutPath>();
+        state.build_tree(Some(&layout_path.0));
 
-    // Handle layout save request (via file dialog path)
-    if let Some(path) = state.layout_save_path.take() {
-        state.save_layout(&path);
-        info!("Layout saved to {}", path.display());
-    }
-
-    // Handle layout load request (via file dialog path)
-    if let Some(path) = state.layout_load_path.take()
-        && state.load_layout(&path)
-    {
-        info!("Layout loaded from {}", path.display());
-    }
-
-    // Handle layout reset request
-    if state.layout_reset_requested {
-        state.layout_reset_requested = false;
-        state.tree = None;
-        state.panel_tile_map.clear();
-        state.build_default_tree();
-        // Delete saved layout file
-        let _ = std::fs::remove_file(&layout_path.0);
-        info!("Layout reset to default");
-    }
-
-    let Ok(ctx) = contexts.ctx_mut() else { return };
-
-    let state = &mut *state;
-    let Some(ref mut tree) = state.tree else {
-        return;
-    };
-
-    egui::CentralPanel::default().show(ctx, |ui| {
-        let mut behavior = WorkbenchBehavior {
-            panels: &mut state.panels,
-            tiles_to_remove: Vec::new(),
-        };
-        tree.ui(&mut behavior, ui);
-
-        // Remove tiles that were closed (right-click or X button)
-        for tile_id in behavior.tiles_to_remove {
-            tree.tiles.remove(tile_id);
+        if let Some(path) = state.layout_save_path.take() {
+            state.save_layout(&path);
+            info!("Layout saved to {}", path.display());
+        }
+        if let Some(path) = state.layout_load_path.take()
+            && state.load_layout(&path)
+        {
+            info!("Layout loaded from {}", path.display());
+        }
+        if state.layout_reset_requested {
+            state.layout_reset_requested = false;
+            state.tree = None;
+            state.panel_tile_map.clear();
+            state.build_default_tree();
+            let _ = std::fs::remove_file(&layout_path.0);
+            info!("Layout reset to default");
         }
     });
+
+    // Phase 2: Get egui context (clone is cheap — Arc internally)
+    let ctx = {
+        let mut sys =
+            SystemState::<Query<&mut bevy_egui::EguiContext, With<PrimaryEguiContext>>>::new(world);
+        let mut query = sys.get_mut(world);
+        let Ok(mut egui_ctx) = query.single_mut() else {
+            return;
+        };
+        let ctx = egui_ctx.get_mut().clone();
+        sys.apply(world);
+        ctx
+    };
+
+    // Phase 3: Temporarily take tree+panels out of resource so we can pass &mut World
+    let (mut tree, mut panels) = {
+        let mut state = world.resource_mut::<TileLayoutState>();
+        (state.tree.take(), std::mem::take(&mut state.panels))
+    };
+
+    if let Some(ref mut tree) = tree {
+        egui::CentralPanel::default().show(&ctx, |ui| {
+            let mut behavior = WorkbenchBehavior {
+                panels: &mut panels,
+                world: Some(world),
+                tiles_to_remove: Vec::new(),
+            };
+            tree.ui(&mut behavior, ui);
+
+            for tile_id in behavior.tiles_to_remove {
+                tree.tiles.remove(tile_id);
+            }
+        });
+    }
+
+    // Phase 4: Put tree+panels back
+    let mut state = world.resource_mut::<TileLayoutState>();
+    state.tree = tree;
+    state.panels = panels;
 }

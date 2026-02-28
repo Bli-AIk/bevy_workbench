@@ -20,20 +20,6 @@ pub fn menu_bar_system(
         egui::MenuBar::new().ui(ui, |ui| {
             // Left side: menus
             ui.menu_button(i18n.t("menu-file"), |ui| {
-                if ui.button(i18n.t("menu-file-new")).clicked() {
-                    ui.close();
-                }
-                if ui.button(i18n.t("menu-file-open")).clicked() {
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button(i18n.t("menu-file-save")).clicked() {
-                    ui.close();
-                }
-                if ui.button(i18n.t("menu-file-save-as")).clicked() {
-                    ui.close();
-                }
-                ui.separator();
                 if ui.button(i18n.t("menu-file-settings")).clicked() {
                     tile_state.open_or_focus_panel("settings");
                     ui.close();

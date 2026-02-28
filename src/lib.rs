@@ -91,10 +91,15 @@ impl Plugin for WorkbenchPlugin {
             .add_systems(Update, mode::mode_input_system)
             .add_systems(Update, mode::run_game_schedule_system)
             .add_systems(OnEnter(mode::EditorMode::Play), mode::on_enter_play)
+            .add_systems(
+                OnEnter(mode::EditorMode::Play),
+                console::console_auto_clear_system,
+            )
             .add_systems(OnEnter(mode::EditorMode::Pause), mode::on_enter_pause)
             .add_systems(OnEnter(mode::EditorMode::Edit), mode::on_enter_edit)
             .add_systems(Update, undo::undo_input_system)
             .add_systems(PreUpdate, assign_primary_egui_context_system)
+            .add_systems(PreUpdate, console::console_drain_system)
             // UI systems must run in EguiPrimaryContextPass (bevy_egui 0.39 multi-pass mode)
             .add_systems(
                 EguiPrimaryContextPass,
@@ -180,6 +185,8 @@ fn assign_primary_egui_context_system(
             commands.entity(entity).insert((
                 bevy_egui::EguiContext::default(),
                 bevy_egui::PrimaryEguiContext,
+                Name::new("workbench_ui_camera"),
+                inspector::WorkbenchInternal,
             ));
             return;
         }

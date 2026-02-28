@@ -20,6 +20,7 @@ rfd = "0.17"
 fluent = "0.17"
 fluent-bundle = "0.16"
 unic-langid = "0.9"
+sys-locale = "0.3"
 
 [dev-dependencies]
 bevy = "0.18"

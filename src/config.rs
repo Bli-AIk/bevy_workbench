@@ -15,6 +15,9 @@ pub struct WorkbenchSettings {
     /// Interface language.
     #[serde(default)]
     pub locale: crate::i18n::Locale,
+    /// Font configuration.
+    #[serde(default)]
+    pub font: crate::font::FontConfig,
 }
 
 fn default_ui_scale() -> f32 {
@@ -27,6 +30,7 @@ impl Default for WorkbenchSettings {
             ui_scale: 1.0,
             theme: crate::theme::ThemeConfig::default(),
             locale: crate::i18n::Locale::default(),
+            font: crate::font::FontConfig::default(),
         }
     }
 }
@@ -74,6 +78,7 @@ pub fn config_apply_system(
     mut tile_state: ResMut<crate::dock::TileLayoutState>,
     mut theme_state: ResMut<crate::theme::ThemeState>,
     mut i18n: ResMut<crate::i18n::I18n>,
+    mut font_state: ResMut<crate::font::FontState>,
 ) {
     // Check if SettingsPanel has a pending save
     if let Some(panel) = tile_state.get_panel_mut::<crate::menu_bar::SettingsPanel>("settings")
@@ -86,6 +91,11 @@ pub fn config_apply_system(
         settings.theme.edit_brightness = panel.edited_edit_brightness;
         settings.theme.play_brightness = panel.edited_play_brightness;
         settings.locale = panel.edited_locale;
+        // Check if font changed
+        if settings.font.custom_font_path != panel.edited_font_path {
+            settings.font.custom_font_path = panel.edited_font_path.clone();
+            font_state.installed = false; // Force font reinstall
+        }
         // Apply theme changes to runtime state
         theme_state.config = settings.theme.clone();
         // Apply locale change

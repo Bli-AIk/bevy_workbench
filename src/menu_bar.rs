@@ -188,6 +188,8 @@ pub struct SettingsPanel {
     pub edited_play_brightness: f32,
     /// Edited interface language.
     pub edited_locale: crate::i18n::Locale,
+    /// Edited custom font path (None = use embedded).
+    pub edited_font_path: Option<String>,
     /// Set to true when user clicks Save.
     pub save_requested: bool,
 }
@@ -201,6 +203,7 @@ impl Default for SettingsPanel {
             edited_edit_brightness: 1.0,
             edited_play_brightness: 0.6,
             edited_locale: crate::i18n::Locale::default(),
+            edited_font_path: None,
             save_requested: false,
         }
     }
@@ -216,6 +219,20 @@ impl WorkbenchPanel for SettingsPanel {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::Frame::NONE
+            .inner_margin(egui::Margin::same(8))
+            .show(ui, |ui| {
+                self.settings_ui(ui);
+            });
+    }
+
+    fn default_visible(&self) -> bool {
+        false
+    }
+}
+
+impl SettingsPanel {
+    fn settings_ui(&mut self, ui: &mut egui::Ui) {
         ui.heading("Editor Settings");
         ui.separator();
 
@@ -276,15 +293,22 @@ impl WorkbenchPanel for SettingsPanel {
                         }
                     });
                 ui.end_row();
+
+                ui.label("Custom Font:");
+                let display = self.edited_font_path.as_deref().unwrap_or("(embedded)");
+                if ui.button(display).clicked()
+                    && let Some(path) = rfd::FileDialog::new()
+                        .add_filter("Font", &["otf", "ttf", "ttc"])
+                        .pick_file()
+                {
+                    self.edited_font_path = Some(path.display().to_string());
+                }
+                ui.end_row();
             });
 
         ui.separator();
         if ui.button("Save").clicked() {
             self.save_requested = true;
         }
-    }
-
-    fn default_visible(&self) -> bool {
-        false
     }
 }

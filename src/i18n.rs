@@ -7,11 +7,16 @@ use std::sync::Arc;
 use unic_langid::LanguageIdentifier;
 
 /// Supported interface languages.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Locale {
-    #[default]
     En,
     ZhCn,
+}
+
+impl Default for Locale {
+    fn default() -> Self {
+        Self::from_system()
+    }
 }
 
 impl Locale {
@@ -22,6 +27,17 @@ impl Locale {
             Locale::En => "English",
             Locale::ZhCn => "简体中文",
         }
+    }
+
+    /// Detect the best locale from the system language setting.
+    pub fn from_system() -> Self {
+        if let Some(tag) = sys_locale::get_locale() {
+            let lower = tag.to_lowercase();
+            if lower.starts_with("zh") {
+                return Locale::ZhCn;
+            }
+        }
+        Locale::En
     }
 
     fn lang_id(&self) -> LanguageIdentifier {

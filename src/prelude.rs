@@ -7,6 +7,7 @@ pub use crate::bench_ui;
 pub use crate::config::WorkbenchSettings;
 pub use crate::console::ConsolePanel;
 pub use crate::dock::{PanelSlot, TileLayoutState, WorkbenchPanel};
+pub use crate::font::FontConfig;
 pub use crate::game_view::{GameViewCamera, GameViewPanel, GameViewPlugin, GameViewState};
 pub use crate::i18n::{I18n, Locale};
 pub use crate::inspector::InspectorPanel;

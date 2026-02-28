@@ -1,5 +1,7 @@
 //! Console panel: collects and displays tracing logs.
 
+use bevy::log::tracing_subscriber::Layer;
+use bevy::log::{BoxedLayer, tracing, tracing_subscriber};
 use bevy::prelude::*;
 use std::sync::{Arc, Mutex, mpsc};
 
@@ -64,6 +66,80 @@ pub type LogReceiver = mpsc::Receiver<LogEntry>;
 /// Create a log channel for capturing tracing output.
 pub fn log_channel() -> (LogSender, LogReceiver) {
     mpsc::channel()
+}
+
+/// A tracing [`Layer`] that forwards log events to the console panel.
+struct ConsoleLayer {
+    sender: LogSender,
+}
+
+impl<S: tracing::Subscriber> Layer<S> for ConsoleLayer {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let level = match *event.metadata().level() {
+            tracing::Level::ERROR => LogLevel::Error,
+            tracing::Level::WARN => LogLevel::Warn,
+            tracing::Level::INFO => LogLevel::Info,
+            tracing::Level::DEBUG => LogLevel::Debug,
+            tracing::Level::TRACE => LogLevel::Trace,
+        };
+        let target = event.metadata().target().to_string();
+
+        // Extract the message from the event fields
+        let mut visitor = MessageVisitor(String::new());
+        event.record(&mut visitor);
+
+        let _ = self.sender.send(LogEntry {
+            level,
+            message: visitor.0,
+            target,
+        });
+    }
+}
+
+struct MessageVisitor(String);
+
+impl tracing::field::Visit for MessageVisitor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.0 = format!("{:?}", value);
+        } else if !self.0.is_empty() {
+            self.0.push_str(&format!(" {}={:?}", field.name(), value));
+        } else {
+            self.0 = format!("{}={:?}", field.name(), value);
+        }
+    }
+
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        if field.name() == "message" {
+            self.0 = value.to_string();
+        } else if !self.0.is_empty() {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        } else {
+            self.0 = format!("{}={}", field.name(), value);
+        }
+    }
+}
+
+/// Returns a [`LogPlugin`](bevy::log::LogPlugin) `custom_layer` function that
+/// connects tracing output to the workbench console panel.
+///
+/// # Usage
+/// ```ignore
+/// App::new()
+///     .add_plugins(DefaultPlugins.set(LogPlugin {
+///         custom_layer: bevy_workbench::console::console_log_layer,
+///         ..default()
+///     }))
+///     .add_plugins(WorkbenchPlugin::default())
+/// ```
+pub fn console_log_layer(app: &mut App) -> Option<BoxedLayer> {
+    let (sender, receiver) = log_channel();
+    app.insert_resource(ConsoleState::with_receiver(receiver));
+    Some(Box::new(ConsoleLayer { sender }))
 }
 
 /// Resource holding console log state.

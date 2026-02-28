@@ -39,6 +39,7 @@ pub struct GameViewPlugin;
 impl Plugin for GameViewPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameViewState::default())
+            .insert_resource(GameViewFocus::default())
             .add_systems(Startup, setup_render_target)
             .add_systems(OnEnter(EditorMode::Play), spawn_game_view_camera);
     }
@@ -105,6 +106,19 @@ pub fn game_view_sync_system(
     }
 }
 
+/// Resource tracking game view focus and rect (for input routing).
+#[derive(Resource, Default)]
+pub struct GameViewFocus {
+    /// Whether the game view panel is hovered.
+    pub hovered: bool,
+    /// The screen-space rect of the rendered game image.
+    pub image_rect: Option<egui::Rect>,
+    /// Resolution of the render target.
+    pub resolution: UVec2,
+    /// Cursor position in render target coordinates (if pointer is over the game view).
+    pub cursor_viewport_pos: Option<Vec2>,
+}
+
 /// Built-in Game View dock panel that displays the render target texture.
 #[derive(Default)]
 pub struct GameViewPanel {
@@ -127,8 +141,15 @@ impl WorkbenchPanel for GameViewPanel {
         "Game View".to_string()
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui) {
+    fn ui(&mut self, _ui: &mut egui::Ui) {}
+
+    fn ui_world(&mut self, ui: &mut egui::Ui, world: &mut World) {
         if !self.is_playing {
+            // Reset focus when not playing
+            if let Some(mut focus) = world.get_resource_mut::<GameViewFocus>() {
+                focus.hovered = false;
+                focus.image_rect = None;
+            }
             ui.centered_and_justified(|ui| {
                 ui.label(&self.press_play_text);
             });
@@ -144,7 +165,7 @@ impl WorkbenchPanel for GameViewPanel {
             };
             let aspect = res.x as f32 / res.y as f32;
 
-            // Fit-to-panel while preserving aspect ratio (Unity-style)
+            // Fit-to-panel while preserving aspect ratio
             let (w, h) = {
                 let w_from_h = available.y * aspect;
                 if w_from_h <= available.x {
@@ -155,17 +176,62 @@ impl WorkbenchPanel for GameViewPanel {
             };
 
             // Center the image within the panel
-            ui.with_layout(
-                egui::Layout::centered_and_justified(ui.layout().main_dir()),
-                |ui| {
-                    ui.image(egui::load::SizedTexture::new(tex_id, [w, h]));
-                },
-            );
+            let response = ui
+                .with_layout(
+                    egui::Layout::centered_and_justified(ui.layout().main_dir()),
+                    |ui| ui.image(egui::load::SizedTexture::new(tex_id, [w, h])),
+                )
+                .inner;
+
+            // Update focus resource
+            let hovered = response.hovered();
+            let image_rect = response.rect;
+
+            // Compute cursor position in render target coordinates
+            let cursor_viewport_pos = if hovered {
+                ui.ctx().pointer_latest_pos().and_then(|pointer_pos| {
+                    if image_rect.contains(pointer_pos) {
+                        let uv_x = (pointer_pos.x - image_rect.left()) / image_rect.width();
+                        let uv_y = (pointer_pos.y - image_rect.top()) / image_rect.height();
+                        Some(Vec2::new(uv_x * res.x as f32, uv_y * res.y as f32))
+                    } else {
+                        None
+                    }
+                })
+            } else {
+                None
+            };
+
+            // Show focus border when hovered
+            if hovered {
+                let painter = ui.painter();
+                painter.rect_stroke(
+                    image_rect,
+                    0.0,
+                    egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 180, 255)),
+                    egui::StrokeKind::Outside,
+                );
+            }
+
+            if let Some(mut focus) = world.get_resource_mut::<GameViewFocus>() {
+                focus.hovered = hovered;
+                focus.image_rect = Some(image_rect);
+                focus.resolution = res;
+                focus.cursor_viewport_pos = cursor_viewport_pos;
+            }
         } else {
+            if let Some(mut focus) = world.get_resource_mut::<GameViewFocus>() {
+                focus.hovered = false;
+                focus.image_rect = None;
+            }
             ui.centered_and_justified(|ui| {
                 ui.label("No render target");
             });
         }
+    }
+
+    fn needs_world(&self) -> bool {
+        true
     }
 
     fn closable(&self) -> bool {

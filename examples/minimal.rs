@@ -150,13 +150,19 @@ fn player_movement(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window>,
-    cameras: Query<(&Camera, &GlobalTransform)>,
+    game_view: Res<GameViewFocus>,
+    cameras: Query<(&Camera, &GlobalTransform), With<GameViewCamera>>,
     mut player: Query<(&MoveSpeed, &mut Transform), With<Player>>,
 ) {
     let Ok((speed, mut tr)) = player.single_mut() else {
         return;
     };
+
+    // Only process input when game view is hovered
+    if !game_view.hovered {
+        return;
+    }
+
     let dt = time.delta_secs();
 
     // WASD movement
@@ -179,13 +185,12 @@ fn player_movement(
         tr.translation.y += delta.y;
     }
 
-    // Right-click teleport
+    // Right-click teleport using game view viewport coordinates
     if mouse_buttons.just_pressed(MouseButton::Right)
-        && let Ok(window) = windows.single()
-        && let Some(cursor_pos) = window.cursor_position()
+        && let Some(viewport_pos) = game_view.cursor_viewport_pos
     {
         for (camera, camera_transform) in &cameras {
-            if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
+            if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, viewport_pos) {
                 tr.translation.x = world_pos.x;
                 tr.translation.y = world_pos.y;
                 break;

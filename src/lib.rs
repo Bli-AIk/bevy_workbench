@@ -58,6 +58,9 @@ impl Plugin for WorkbenchPlugin {
         if !app.is_plugin_added::<EguiPlugin>() {
             app.add_plugins(EguiPlugin::default());
         }
+        if !app.is_plugin_added::<bevy_inspector_egui::DefaultInspectorConfigPlugin>() {
+            app.add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin);
+        }
 
         // Disable auto PrimaryEguiContext — we assign it explicitly to the
         // window camera so the GameViewCamera doesn't accidentally steal it.

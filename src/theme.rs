@@ -311,11 +311,11 @@ fn apply_rerun_theme(ctx: &egui::Context, interact_size_override: Option<Vec2>, 
     let b = brightness;
     style.visuals.dark_mode = true;
     style.visuals.faint_bg_color = dim_color(gray::S150, b);
-    style.visuals.extreme_bg_color = dim_color(gray::S0, b);
+    style.visuals.extreme_bg_color = dim_color(gray::S200, b);
 
     style.visuals.widgets.noninteractive.weak_bg_fill = dim_color(gray::S100, b);
     style.visuals.widgets.noninteractive.bg_fill = dim_color(gray::S100, b);
-    style.visuals.text_edit_bg_color = Some(dim_color(gray::S200, b));
+    style.visuals.text_edit_bg_color = Some(dim_color(gray::S250, b));
 
     style.visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
     style.visuals.widgets.inactive.bg_fill = dim_color(gray::S300, b);

@@ -86,6 +86,7 @@ impl Plugin for WorkbenchPlugin {
             .insert_resource(dock::TileLayoutState::default())
             .init_resource::<console::ConsoleState>()
             .insert_resource(inspector::InspectorSelection::default())
+            .init_resource::<inspector::InspectorUndoState>()
             .insert_resource(theme::ThemeState {
                 config: settings.theme.clone(),
                 ..Default::default()

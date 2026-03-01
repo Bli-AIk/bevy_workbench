@@ -7,20 +7,61 @@ use crate::dock::{TileLayoutState, WorkbenchPanel};
 use crate::mode::EditorMode;
 use crate::theme::gray;
 
+/// A custom item to inject into the File menu.
+pub struct MenuExtItem {
+    /// Unique identifier for this action (e.g., "open", "save").
+    pub id: &'static str,
+    /// Display label (e.g., "Open...", "Save").
+    pub label: String,
+    /// Whether the item is clickable.
+    pub enabled: bool,
+}
+
+/// Resource for extending the workbench menu bar with custom items.
+#[derive(Resource, Default)]
+pub struct MenuBarExtensions {
+    /// Custom items prepended to the File menu (before built-in "Settings").
+    pub file_items: Vec<MenuExtItem>,
+    /// Info text displayed after all menus (e.g., project title, resolution).
+    pub info_text: Option<String>,
+}
+
+/// Message sent when a custom menu item is clicked.
+#[derive(Message)]
+pub struct MenuAction {
+    pub id: &'static str,
+}
+
 /// System that renders the top menu bar.
 pub fn menu_bar_system(
     mut contexts: EguiContexts,
-    current_mode: Res<State<EditorMode>>,
-    mut next_mode: ResMut<NextState<EditorMode>>,
     mut tile_state: ResMut<TileLayoutState>,
     i18n: Res<crate::i18n::I18n>,
     mut undo_stack: ResMut<crate::undo::UndoStack>,
+    extensions: Option<Res<MenuBarExtensions>>,
+    mut menu_actions: MessageWriter<MenuAction>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::TopBottomPanel::top("workbench_menu_bar").show(ctx, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
             // Left side: menus
             ui.menu_button(i18n.t("menu-file"), |ui| {
+                // Custom file menu items (from extensions)
+                if let Some(ref ext) = extensions {
+                    for item in &ext.file_items {
+                        if ui
+                            .add_enabled(item.enabled, egui::Button::new(&item.label))
+                            .clicked()
+                        {
+                            menu_actions.write(MenuAction { id: item.id });
+                            ui.close();
+                        }
+                    }
+                    if !ext.file_items.is_empty() {
+                        ui.separator();
+                    }
+                }
+
                 if ui.button(i18n.t("menu-file-settings")).clicked() {
                     tile_state.request_open_panel("settings");
                     ui.close();
@@ -115,10 +156,30 @@ pub fn menu_bar_system(
                     }
                 }
             });
+
+            // Extension info text (e.g., project title)
+            if let Some(ref ext) = extensions
+                && let Some(ref text) = ext.info_text
+            {
+                ui.separator();
+                ui.label(text);
+            }
         });
     });
 
     // Secondary toolbar — centered Play/Pause/Stop
+}
+
+/// System that renders the Play/Pause/Stop toolbar.
+/// Only added when `WorkbenchConfig::show_toolbar` is `true`.
+pub fn toolbar_system(
+    mut contexts: EguiContexts,
+    current_mode: Res<State<EditorMode>>,
+    mut next_mode: ResMut<NextState<EditorMode>>,
+    i18n: Res<crate::i18n::I18n>,
+) {
+    let Ok(ctx) = contexts.ctx_mut() else { return };
+
     let btn_fill = gray::S250;
     egui::TopBottomPanel::top("workbench_toolbar").show(ctx, |ui| {
         ui.horizontal_centered(|ui| {

@@ -35,6 +35,13 @@ pub struct WorkbenchConfig {
     pub layout: layout::LayoutMode,
     pub show_menu_bar: bool,
     pub show_console: bool,
+    /// Whether to show the built-in Play/Stop/Pause toolbar.
+    /// Set to `false` for tools that don't use the game mode system
+    /// (e.g., animation editors that are always "running").
+    pub show_toolbar: bool,
+    /// Whether to enable the built-in GameView render-to-texture pipeline.
+    /// Set to `false` if your app has its own preview/rendering setup.
+    pub enable_game_view: bool,
 }
 
 impl Default for WorkbenchConfig {
@@ -43,6 +50,8 @@ impl Default for WorkbenchConfig {
             layout: layout::LayoutMode::Auto,
             show_menu_bar: true,
             show_console: true,
+            show_toolbar: true,
+            enable_game_view: true,
         }
     }
 }
@@ -94,39 +103,63 @@ impl Plugin for WorkbenchPlugin {
             })
             .insert_resource(i18n::I18n::new(settings.locale))
             .insert_resource(font::FontState::default())
+            .add_message::<menu_bar::MenuAction>()
             .add_systems(Update, layout::detect_layout_system)
-            .add_systems(Update, mode::mode_input_system)
-            .add_systems(Update, mode::run_game_schedule_system)
-            .add_systems(OnEnter(mode::EditorMode::Play), mode::on_enter_play)
-            .add_systems(
-                OnEnter(mode::EditorMode::Play),
-                console::console_auto_clear_system,
-            )
-            .add_systems(OnEnter(mode::EditorMode::Pause), mode::on_enter_pause)
-            .add_systems(OnEnter(mode::EditorMode::Edit), mode::on_enter_edit)
             .add_systems(Update, undo::undo_input_system)
             .add_systems(PreUpdate, assign_primary_egui_context_system)
             .add_systems(PreUpdate, console::console_drain_system)
-            .add_systems(PreUpdate, inspector::mark_internal_entities_system)
-            // UI systems must run in EguiPrimaryContextPass (bevy_egui 0.39 multi-pass mode)
-            .add_systems(
-                EguiPrimaryContextPass,
+            .add_systems(PreUpdate, inspector::mark_internal_entities_system);
+
+        // Mode system (Play/Stop/Pause) — only when toolbar is enabled
+        if self.config.show_toolbar {
+            app.add_systems(Update, mode::mode_input_system)
+                .add_systems(Update, mode::run_game_schedule_system)
+                .add_systems(OnEnter(mode::EditorMode::Play), mode::on_enter_play)
+                .add_systems(
+                    OnEnter(mode::EditorMode::Play),
+                    console::console_auto_clear_system,
+                )
+                .add_systems(OnEnter(mode::EditorMode::Pause), mode::on_enter_pause)
+                .add_systems(OnEnter(mode::EditorMode::Edit), mode::on_enter_edit);
+        }
+
+        // UI systems must run in EguiPrimaryContextPass (bevy_egui 0.39 multi-pass mode)
+        {
+            let ui_systems = (
                 (
-                    (
-                        config::config_apply_system,
-                        font::install_fonts_system,
-                        theme::apply_theme_system,
-                    )
-                        .chain(),
-                    game_view::game_view_sync_system,
-                    menu_bar::menu_bar_system,
-                    dock::tiles_ui_system,
+                    config::config_apply_system,
+                    font::install_fonts_system,
+                    theme::apply_theme_system,
                 )
                     .chain(),
-            );
+                game_view::game_view_sync_system
+                    .run_if(resource_exists::<game_view::GameViewState>),
+                menu_bar::menu_bar_system,
+            )
+                .chain();
+
+            if self.config.show_toolbar {
+                app.add_systems(
+                    EguiPrimaryContextPass,
+                    (ui_systems, menu_bar::toolbar_system, dock::tiles_ui_system).chain(),
+                );
+            } else {
+                app.add_systems(
+                    EguiPrimaryContextPass,
+                    (ui_systems, dock::tiles_ui_system).chain(),
+                );
+            }
+        }
+
+        // Game view render-to-texture pipeline
+        if self.config.enable_game_view {
+            app.add_plugins(game_view::GameViewPlugin);
+        }
 
         // Register built-in panels
-        app.register_panel(game_view::GameViewPanel::default());
+        if self.config.enable_game_view {
+            app.register_panel(game_view::GameViewPanel::default());
+        }
         app.register_panel(inspector::InspectorPanel);
         if self.config.show_console {
             app.register_panel(console::ConsolePanel);

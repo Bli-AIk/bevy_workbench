@@ -10,8 +10,6 @@ use crate::theme::gray;
 /// System that renders the top menu bar.
 pub fn menu_bar_system(
     mut contexts: EguiContexts,
-    current_mode: Res<State<EditorMode>>,
-    mut next_mode: ResMut<NextState<EditorMode>>,
     mut tile_state: ResMut<TileLayoutState>,
     i18n: Res<crate::i18n::I18n>,
     mut undo_stack: ResMut<crate::undo::UndoStack>,
@@ -119,6 +117,18 @@ pub fn menu_bar_system(
     });
 
     // Secondary toolbar — centered Play/Pause/Stop
+}
+
+/// System that renders the Play/Pause/Stop toolbar.
+/// Only added when `WorkbenchConfig::show_toolbar` is `true`.
+pub fn toolbar_system(
+    mut contexts: EguiContexts,
+    current_mode: Res<State<EditorMode>>,
+    mut next_mode: ResMut<NextState<EditorMode>>,
+    i18n: Res<crate::i18n::I18n>,
+) {
+    let Ok(ctx) = contexts.ctx_mut() else { return };
+
     let btn_fill = gray::S250;
     egui::TopBottomPanel::top("workbench_toolbar").show(ctx, |ui| {
         ui.horizontal_centered(|ui| {

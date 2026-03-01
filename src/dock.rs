@@ -153,7 +153,7 @@ impl TileLayoutState {
         let slot = match panel.id() {
             id if id.contains("inspector") => PanelSlot::Right,
             id if id.contains("console") || id.contains("timeline") => PanelSlot::Bottom,
-            id if id.contains("game_view") => PanelSlot::Center,
+            id if id.contains("game_view") || id.contains("preview") => PanelSlot::Center,
             _ => PanelSlot::Left,
         };
         let visible = panel.default_visible();
@@ -213,7 +213,7 @@ impl TileLayoutState {
             let slot = match str_id.as_str() {
                 id if id.contains("inspector") => PanelSlot::Right,
                 id if id.contains("console") || id.contains("timeline") => PanelSlot::Bottom,
-                id if id.contains("game_view") => PanelSlot::Center,
+                id if id.contains("game_view") || id.contains("preview") => PanelSlot::Center,
                 _ => PanelSlot::Left,
             };
             let tile_id = tiles.insert_pane(PaneEntry { panel_id });

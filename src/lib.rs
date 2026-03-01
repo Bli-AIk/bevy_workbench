@@ -125,6 +125,9 @@ impl Plugin for WorkbenchPlugin {
                     .chain(),
             );
 
+        // Game view render-to-texture pipeline
+        app.add_plugins(game_view::GameViewPlugin);
+
         // Register built-in panels
         app.register_panel(game_view::GameViewPanel::default());
         app.register_panel(inspector::InspectorPanel);

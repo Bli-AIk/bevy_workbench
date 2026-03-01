@@ -7,10 +7,21 @@ use bevy::state::prelude::DespawnOnEnter;
 
 use crate::dock::{TileLayoutState, WorkbenchPanel};
 use crate::mode::EditorMode;
+use crate::theme::gray;
 
 /// Marker component for the preview camera that renders to the game view texture.
 #[derive(Component)]
 pub struct GameViewCamera;
+
+/// Zoom mode for the game view panel.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum ViewZoom {
+    /// Fit the image within the available panel space, preserving aspect ratio.
+    #[default]
+    Auto,
+    /// Display at a fixed scale factor (1.0 = 100%).
+    Fixed(f32),
+}
 
 /// Resource holding the game view render state.
 #[derive(Resource)]
@@ -130,6 +141,8 @@ pub struct GameViewPanel {
     pub is_playing: bool,
     /// Localized "press play" text.
     pub press_play_text: String,
+    /// Current zoom mode.
+    pub zoom: ViewZoom,
 }
 
 impl WorkbenchPanel for GameViewPanel {
@@ -157,37 +170,77 @@ impl WorkbenchPanel for GameViewPanel {
         }
 
         if let Some(tex_id) = self.egui_texture_id {
-            let available = ui.available_size();
             let res = if self.resolution.x > 0 && self.resolution.y > 0 {
                 self.resolution
             } else {
                 UVec2::new(1280, 720)
             };
+
+            // Zoom toolbar
+            ui.horizontal(|ui| {
+                let zoom_label = match self.zoom {
+                    ViewZoom::Auto => "Auto".to_string(),
+                    ViewZoom::Fixed(z) => format!("{:.0}%", z * 100.0),
+                };
+                egui::ComboBox::from_id_salt("game_view_zoom")
+                    .selected_text(&zoom_label)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.zoom, ViewZoom::Auto, "Auto");
+                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(0.5), "50%");
+                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(0.75), "75%");
+                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(1.0), "100%");
+                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(1.25), "125%");
+                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(1.5), "150%");
+                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(2.0), "200%");
+                    });
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.colored_label(gray::S550, format!("{}×{}", res.x, res.y));
+                });
+            });
+
+            ui.separator();
+
+            let available = ui.available_size();
             let aspect = res.x as f32 / res.y as f32;
 
-            // Fit-to-panel while preserving aspect ratio
-            let (w, h) = {
-                let w_from_h = available.y * aspect;
-                if w_from_h <= available.x {
-                    (w_from_h, available.y)
-                } else {
-                    (available.x, available.x / aspect)
+            let display_size = match self.zoom {
+                ViewZoom::Auto => {
+                    let w = available.x;
+                    let h = w / aspect;
+                    if h > available.y {
+                        egui::vec2(available.y * aspect, available.y)
+                    } else {
+                        egui::vec2(w, h)
+                    }
                 }
+                ViewZoom::Fixed(z) => egui::vec2(res.x as f32 * z, res.y as f32 * z),
             };
 
-            // Center the image within the panel
-            let response = ui
-                .with_layout(
+            let padding = (available - display_size).max(egui::Vec2::ZERO) * 0.5;
+
+            // For fixed zoom that overflows, use a scroll area
+            let response = if matches!(self.zoom, ViewZoom::Fixed(_))
+                && (display_size.x > available.x || display_size.y > available.y)
+            {
+                egui::ScrollArea::both()
+                    .show(ui, |ui| {
+                        ui.image(egui::load::SizedTexture::new(tex_id, display_size))
+                    })
+                    .inner
+            } else {
+                ui.add_space(padding.y);
+                ui.with_layout(
                     egui::Layout::centered_and_justified(ui.layout().main_dir()),
-                    |ui| ui.image(egui::load::SizedTexture::new(tex_id, [w, h])),
+                    |ui| ui.image(egui::load::SizedTexture::new(tex_id, display_size)),
                 )
-                .inner;
+                .inner
+            };
 
             // Update focus resource
             let hovered = response.hovered();
             let image_rect = response.rect;
 
-            // Compute cursor position in render target coordinates
             let cursor_viewport_pos = if hovered {
                 ui.ctx().pointer_latest_pos().and_then(|pointer_pos| {
                     if image_rect.contains(pointer_pos) {
@@ -202,7 +255,6 @@ impl WorkbenchPanel for GameViewPanel {
                 None
             };
 
-            // Show focus border when hovered
             if hovered {
                 let painter = ui.painter();
                 painter.rect_stroke(

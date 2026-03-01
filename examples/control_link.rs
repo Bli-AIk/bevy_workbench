@@ -43,8 +43,7 @@ fn main() {
             }),
     )
     .insert_resource(ClearColor(Color::BLACK))
-    .add_plugins(WorkbenchPlugin::default())
-    .add_plugins(GameViewPlugin);
+    .add_plugins(WorkbenchPlugin::default());
 
     common::register_types(&mut app);
     register_panels(&mut app);

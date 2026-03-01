@@ -103,6 +103,7 @@ impl Plugin for WorkbenchPlugin {
             })
             .insert_resource(i18n::I18n::new(settings.locale))
             .insert_resource(font::FontState::default())
+            .add_message::<menu_bar::MenuAction>()
             .add_systems(Update, layout::detect_layout_system)
             .add_systems(Update, undo::undo_input_system)
             .add_systems(PreUpdate, assign_primary_egui_context_system)

@@ -9,12 +9,12 @@ pub use crate::console::{ConsolePanel, console_log_layer};
 pub use crate::dock::{PanelSlot, TileLayoutState, WorkbenchPanel};
 pub use crate::font::FontConfig;
 pub use crate::game_view::{
-    GameViewCamera, GameViewFocus, GameViewPanel, GameViewPlugin, GameViewState,
+    GameViewCamera, GameViewFocus, GameViewPanel, GameViewPlugin, GameViewState, ViewZoom,
 };
 pub use crate::i18n::{I18n, Locale};
 pub use crate::inspector::InspectorPanel;
-pub use crate::keybind::{KeyBind, KeyBindSlot, KeyBindings};
 pub use crate::layout::{LayoutMode, LayoutState};
+pub use crate::menu_bar::{MenuAction, MenuBarExtensions, MenuExtItem};
 pub use crate::mode::{EditorMode, GameClock, GameSchedule, ModeController, on_fresh_play};
 pub use crate::theme::{ThemeConfig, ThemePreset, ThemeState};
 pub use crate::undo::{UndoAction, UndoStack};

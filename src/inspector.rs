@@ -214,51 +214,68 @@ impl WorkbenchPanel for InspectorPanel {
             ui.separator();
             egui::ScrollArea::both().show(ui, |ui| match selected.selected.as_slice() {
                 &[entity] => {
-                    // Inspector undo: track changes
-                    let mut undo_state = world
-                        .remove_resource::<InspectorUndoState>()
-                        .unwrap_or_default();
+                    // Entire inspector block wrapped in catch_unwind because
+                    // bevy_reflect panics on types that don't fully implement
+                    // Reflect (e.g. Box<dyn Buttonlike>, unhashable map keys).
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        // Inspector undo: track changes
+                        let mut undo_state = world
+                            .remove_resource::<InspectorUndoState>()
+                            .unwrap_or_default();
 
-                    // Take baseline on selection change
-                    if undo_state.tracked_entity != Some(entity) {
-                        undo_state.tracked_entity = Some(entity);
-                        undo_state.baseline = snapshot_entity(world, entity);
-                        undo_state.was_pressing = false;
-                    }
-
-                    let pressing = ui.input(|i| i.pointer.any_pressed());
-
-                    // Render inspector (may modify components)
-                    bevy_inspector::ui_for_entity(world, entity, ui);
-
-                    // On mouse release after pressing, check for changes
-                    if undo_state.was_pressing
-                        && !pressing
-                        && let Some(baseline) = &undo_state.baseline
-                        && let Some(current) = snapshot_entity(world, entity)
-                        && snapshots_differ(baseline, &current)
-                    {
-                        let before = clone_snapshot(baseline);
-                        let desc = format!("Modify entity {entity:?}");
-                        if let Some(mut undo_stack) =
-                            world.get_resource_mut::<crate::undo::UndoStack>()
-                        {
-                            undo_stack.push(InspectorUndoAction {
-                                entity,
-                                before,
-                                after: current,
-                                desc,
-                            });
+                        // Take baseline on selection change
+                        if undo_state.tracked_entity != Some(entity) {
+                            undo_state.tracked_entity = Some(entity);
+                            undo_state.baseline = snapshot_entity(world, entity);
+                            undo_state.was_pressing = false;
                         }
-                        // Update baseline to current state
-                        undo_state.baseline = snapshot_entity(world, entity);
-                    }
-                    undo_state.was_pressing = pressing;
 
-                    world.insert_resource(undo_state);
+                        let pressing = ui.input(|i| i.pointer.any_pressed());
+
+                        // Render inspector (may modify components)
+                        bevy_inspector::ui_for_entity(world, entity, ui);
+
+                        // On mouse release after pressing, check for changes
+                        if undo_state.was_pressing
+                            && !pressing
+                            && let Some(baseline) = &undo_state.baseline
+                            && let Some(current) = snapshot_entity(world, entity)
+                            && snapshots_differ(baseline, &current)
+                        {
+                            let before = clone_snapshot(baseline);
+                            let desc = format!("Modify entity {entity:?}");
+                            if let Some(mut undo_stack) =
+                                world.get_resource_mut::<crate::undo::UndoStack>()
+                            {
+                                undo_stack.push(InspectorUndoAction {
+                                    entity,
+                                    before,
+                                    after: current,
+                                    desc,
+                                });
+                            }
+                            // Update baseline to current state
+                            undo_state.baseline = snapshot_entity(world, entity);
+                        }
+                        undo_state.was_pressing = pressing;
+
+                        world.insert_resource(undo_state);
+                    }));
+                    if result.is_err() {
+                        ui.colored_label(
+                            egui::Color32::YELLOW,
+                            "⚠ Some components could not be reflected",
+                        );
+                        // Ensure InspectorUndoState resource is restored
+                        if world.get_resource::<InspectorUndoState>().is_none() {
+                            world.insert_resource(InspectorUndoState::default());
+                        }
+                    }
                 }
                 entities if !entities.is_empty() => {
-                    bevy_inspector::ui_for_entities_shared_components(world, entities, ui);
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        bevy_inspector::ui_for_entities_shared_components(world, entities, ui);
+                    }));
                 }
                 _ => {
                     ui.weak(&s_select_hint);

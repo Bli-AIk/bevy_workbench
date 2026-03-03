@@ -167,7 +167,30 @@ pub fn game_view_sync_system(
     }
 }
 
-/// Resource tracking game view focus and rect (for input routing).
+/// A toggle button that external code can register on the game view toolbar.
+pub struct ToolbarToggle {
+    /// Unique identifier for this toggle.
+    pub id: String,
+    /// Display label.
+    pub label: String,
+    /// Current enabled state.
+    pub enabled: bool,
+}
+
+/// Resource for registering custom toolbar items on the game view.
+/// External code (e.g., editor plugins) inserts this and reads toggle states.
+#[derive(Resource, Default)]
+pub struct GameViewToolbar {
+    pub toggles: Vec<ToolbarToggle>,
+}
+
+impl GameViewToolbar {
+    /// Returns the enabled state of a toggle by ID, or None if not found.
+    pub fn is_enabled(&self, id: &str) -> Option<bool> {
+        self.toggles.iter().find(|t| t.id == id).map(|t| t.enabled)
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct GameViewFocus {
     /// Whether the game view panel is hovered.
@@ -243,6 +266,19 @@ impl WorkbenchPanel for GameViewPanel {
                         ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(1.5), "150%");
                         ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(2.0), "200%");
                     });
+
+                // Custom toolbar toggles
+                if let Some(mut toolbar) = world.get_resource_mut::<GameViewToolbar>() {
+                    for toggle in &mut toolbar.toggles {
+                        let icon = if toggle.enabled { "✅" } else { "⬜" };
+                        if ui
+                            .small_button(format!("{icon} {}", toggle.label))
+                            .clicked()
+                        {
+                            toggle.enabled = !toggle.enabled;
+                        }
+                    }
+                }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.colored_label(gray::S550, format!("{}×{}", res.x, res.y));

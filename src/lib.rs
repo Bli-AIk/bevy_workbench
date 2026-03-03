@@ -198,16 +198,19 @@ impl WorkbenchApp for App {
     }
 }
 
-/// Assigns PrimaryEguiContext to the first window-targeting camera that doesn't
-/// have one yet. Runs every frame until assigned. This replaces bevy_egui's
+/// Assigns PrimaryEguiContext to the first active, window-targeting camera that
+/// doesn't have one yet. Runs every frame until assigned. This replaces bevy_egui's
 /// auto_create_primary_context so the GameViewCamera never steals it.
 #[allow(clippy::type_complexity)]
 fn assign_primary_egui_context_system(
     mut commands: Commands,
     cameras: Query<
-        (Entity, Option<&bevy::camera::RenderTarget>),
         (
-            With<bevy::camera::Camera>,
+            Entity,
+            Option<&bevy::camera::RenderTarget>,
+            &bevy::camera::Camera,
+        ),
+        (
             Without<bevy_egui::PrimaryEguiContext>,
             Without<game_view::GameViewCamera>,
         ),
@@ -217,8 +220,11 @@ fn assign_primary_egui_context_system(
     if !existing.is_empty() {
         return;
     }
-    // Find the first camera NOT used for render-to-texture
-    for (entity, target) in &cameras {
+    // Find the first active camera NOT used for render-to-texture
+    for (entity, target, camera) in &cameras {
+        if !camera.is_active {
+            continue;
+        }
         let is_image_target = matches!(
             target,
             Some(bevy::camera::RenderTarget::Image(_))

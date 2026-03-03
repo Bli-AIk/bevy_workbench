@@ -1,6 +1,7 @@
 //! Game View: renders the game world to a texture and displays it in an egui panel.
 
 use bevy::camera::RenderTarget;
+use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
 use bevy::state::prelude::DespawnOnEnter;
@@ -12,6 +13,14 @@ use crate::theme::gray;
 /// Marker component for the preview camera that renders to the game view texture.
 #[derive(Component)]
 pub struct GameViewCamera;
+
+/// Optional resource: when present, GameViewPlugin will hijack the specified camera
+/// entity instead of spawning its own. In Play mode, the camera's RenderTarget is
+/// redirected to the game view texture and is_active set to true. On Edit, reversed.
+///
+/// Insert this resource after the external camera entity has been created.
+#[derive(Resource)]
+pub struct ExternalGameCamera(pub Entity);
 
 /// Zoom mode for the game view panel.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -52,31 +61,54 @@ impl Plugin for GameViewPlugin {
         app.insert_resource(GameViewState::default())
             .insert_resource(GameViewFocus::default())
             .add_systems(Startup, setup_render_target)
-            .add_systems(OnEnter(EditorMode::Play), spawn_game_view_camera);
+            .add_systems(OnEnter(EditorMode::Play), activate_game_view_camera)
+            .add_systems(OnEnter(EditorMode::Edit), deactivate_external_camera);
     }
 }
 
 /// Creates the render target texture (persistent, survives Play/Stop cycles).
 fn setup_render_target(mut images: ResMut<Assets<Image>>, mut state: ResMut<GameViewState>) {
-    let image = Image::new_target_texture(
+    let mut image = Image::new_target_texture(
         state.resolution.x,
         state.resolution.y,
         TextureFormat::Bgra8UnormSrgb,
         Some(TextureFormat::Bgra8UnormSrgb),
     );
+    image.sampler = ImageSampler::nearest();
     state.render_target = images.add(image);
 }
 
-/// Spawns the preview camera on Play if one doesn't already exist (e.g., after Resume).
-/// `DespawnOnEnter(Edit)` ensures cleanup on Stop.
-fn spawn_game_view_camera(
+/// Activates the game view camera on Play.
+///
+/// If `ExternalGameCamera` resource exists, hijacks that camera by redirecting its
+/// render target to the game view texture. Otherwise, spawns a new internal camera.
+fn activate_game_view_camera(
     mut commands: Commands,
     state: Res<GameViewState>,
     existing: Query<(), With<GameViewCamera>>,
+    external: Option<Res<ExternalGameCamera>>,
+    mut cameras: Query<(&mut Camera, &mut Projection)>,
 ) {
     if !existing.is_empty() {
         return;
     }
+
+    if let Some(ext) = external {
+        if let Ok((mut camera, mut projection)) = cameras.get_mut(ext.0) {
+            camera.is_active = true;
+            camera.order = -1;
+            // Force projection change detection so camera_system re-computes
+            // the projection using the render target texture dimensions.
+            projection.set_changed();
+        }
+        commands.entity(ext.0).insert((
+            GameViewCamera,
+            RenderTarget::from(state.render_target.clone()),
+        ));
+        return;
+    }
+
+    // Fallback: spawn internal camera
     commands.spawn((
         Camera2d,
         Camera {
@@ -88,6 +120,24 @@ fn spawn_game_view_camera(
         GameViewCamera,
         DespawnOnEnter(EditorMode::Edit),
     ));
+}
+
+/// Deactivates external camera on Edit mode. Internal cameras are despawned
+/// automatically by `DespawnOnEnter(Edit)`.
+fn deactivate_external_camera(
+    mut commands: Commands,
+    external: Option<Res<ExternalGameCamera>>,
+    mut cameras: Query<&mut Camera, With<GameViewCamera>>,
+) {
+    let Some(ext) = external else { return };
+    let Ok(mut camera) = cameras.get_mut(ext.0) else {
+        return;
+    };
+    camera.is_active = false;
+    commands
+        .entity(ext.0)
+        .remove::<GameViewCamera>()
+        .remove::<RenderTarget>();
 }
 
 /// System that registers the render target as an egui texture and syncs to the panel.

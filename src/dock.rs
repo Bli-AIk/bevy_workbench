@@ -205,12 +205,17 @@ impl TileLayoutState {
         let mut right_panes = Vec::new();
         let mut bottom_panes = Vec::new();
 
-        for (str_id, &panel_id) in &self.panel_id_map {
-            let panel = &self.panels[&panel_id];
-            if !panel.default_visible() {
-                continue;
-            }
-            let slot = match str_id.as_str() {
+        // Collect visible panels with slot info, sorted by ID for deterministic order
+        let mut visible_panels: Vec<(&str, PanelId)> = self
+            .panel_id_map
+            .iter()
+            .filter(|(_, pid)| self.panels[pid].default_visible())
+            .map(|(s, pid)| (s.as_str(), *pid))
+            .collect();
+        visible_panels.sort_by_key(|(s, _)| *s);
+
+        for &(str_id, panel_id) in &visible_panels {
+            let slot = match str_id {
                 id if id.contains("inspector") => PanelSlot::Right,
                 id if id.contains("console") || id.contains("timeline") => PanelSlot::Bottom,
                 id if id.contains("game_view") || id.contains("preview") => PanelSlot::Center,
@@ -225,6 +230,19 @@ impl TileLayoutState {
                 PanelSlot::Bottom => bottom_panes.push(tile_id),
             }
         }
+
+        // Sort center panes: non-game_view tabs before game_view (first tab is active by default)
+        center_panes.sort_by_key(|tile_id| {
+            if let Some(egui_tiles::Tile::Pane(pane)) = tiles.get(*tile_id) {
+                // game_view panels go last
+                let is_game_view = visible_panels
+                    .iter()
+                    .any(|&(s, pid)| pid == pane.panel_id && s.contains("game_view"));
+                if is_game_view { 1 } else { 0 }
+            } else {
+                0
+            }
+        });
 
         // Build tab containers for each slot (always with tab headers for drag support)
         let left_tile = Self::make_tab(&mut tiles, left_panes);

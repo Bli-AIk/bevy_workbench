@@ -1,6 +1,7 @@
 //! Internationalization support using Fluent.
 
 use bevy::prelude::*;
+pub use fluent_bundle::FluentArgs;
 use fluent_bundle::FluentResource;
 use fluent_bundle::concurrent::FluentBundle;
 use std::sync::Arc;
@@ -104,6 +105,21 @@ impl I18n {
                 let mut errors = vec![];
                 self.bundle
                     .format_pattern(pattern, None, &mut errors)
+                    .to_string()
+            }
+            None => id.to_string(),
+        }
+    }
+
+    /// Get a localized string with named arguments.
+    pub fn t_args(&self, id: &str, args: &fluent_bundle::FluentArgs) -> String {
+        let msg = self.bundle.get_message(id);
+        match msg {
+            Some(msg) => {
+                let pattern = msg.value().expect("message has no value");
+                let mut errors = vec![];
+                self.bundle
+                    .format_pattern(pattern, Some(args), &mut errors)
                     .to_string()
             }
             None => id.to_string(),

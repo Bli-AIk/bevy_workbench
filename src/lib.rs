@@ -185,6 +185,9 @@ impl Plugin for WorkbenchPlugin {
 pub trait WorkbenchApp {
     /// Register a custom panel. The panel will be added to the dock layout.
     fn register_panel(&mut self, panel: impl dock::WorkbenchPanel) -> &mut Self;
+
+    /// Register a custom section in the built-in Settings panel.
+    fn register_settings_section(&mut self, section: menu_bar::SettingsSection) -> &mut Self;
 }
 
 impl WorkbenchApp for App {
@@ -194,6 +197,17 @@ impl WorkbenchApp for App {
             .get_resource_mut::<dock::TileLayoutState>()
             .expect("WorkbenchPlugin must be added before registering panels");
         tile_state.add_panel(Box::new(panel));
+        self
+    }
+
+    fn register_settings_section(&mut self, section: menu_bar::SettingsSection) -> &mut Self {
+        let mut tile_state = self
+            .world_mut()
+            .get_resource_mut::<dock::TileLayoutState>()
+            .expect("WorkbenchPlugin must be added before registering settings sections");
+        if let Some(panel) = tile_state.get_panel_mut::<menu_bar::SettingsPanel>("settings") {
+            panel.custom_sections.push(section);
+        }
         self
     }
 }

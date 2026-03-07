@@ -15,7 +15,9 @@ pub use crate::game_view::{
 pub use crate::i18n::{I18n, Locale};
 pub use crate::inspector::InspectorPanel;
 pub use crate::layout::{LayoutMode, LayoutState};
-pub use crate::menu_bar::{CustomMenu, MenuAction, MenuBarExtensions, MenuExtItem};
+pub use crate::menu_bar::{
+    CustomMenu, MenuAction, MenuBarExtensions, MenuExtItem, SettingsSection,
+};
 pub use crate::mode::{EditorMode, GameClock, GameSchedule, ModeController, on_fresh_play};
 pub use crate::theme::{ThemeConfig, ThemePreset, ThemeState};
 pub use crate::undo::{UndoAction, UndoStack};

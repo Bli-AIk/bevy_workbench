@@ -134,6 +134,14 @@ pub fn toolbar_system(
 }
 
 /// Settings panel — displayed as a tab in the tile layout.
+/// A custom section to inject into the Settings panel.
+pub struct SettingsSection {
+    /// Section heading.
+    pub label: String,
+    /// UI rendering callback.
+    pub ui_fn: Box<dyn FnMut(&mut egui::Ui) + Send + Sync>,
+}
+
 pub struct SettingsPanel {
     /// Edited scale value (not yet saved).
     pub edited_scale: f32,
@@ -151,6 +159,8 @@ pub struct SettingsPanel {
     pub edited_font_path: Option<String>,
     /// Set to true when user clicks Save.
     pub save_requested: bool,
+    /// Custom settings sections injected by downstream applications.
+    pub custom_sections: Vec<SettingsSection>,
 }
 
 impl Default for SettingsPanel {
@@ -164,6 +174,7 @@ impl Default for SettingsPanel {
             edited_locale: crate::i18n::Locale::default(),
             edited_font_path: None,
             save_requested: false,
+            custom_sections: Vec::new(),
         }
     }
 }
@@ -545,6 +556,13 @@ fn settings_panel_ui(panel: &mut SettingsPanel, ui: &mut egui::Ui) {
     ui.separator();
     if ui.button("Save").clicked() {
         panel.save_requested = true;
+    }
+
+    // Custom settings sections
+    for section in &mut panel.custom_sections {
+        ui.separator();
+        ui.heading(&section.label);
+        (section.ui_fn)(ui);
     }
 }
 

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/Bli-AIk/bevy_workbench/compare/v0.1.0...v0.2.0) - 2026-03-07
+
+### Added
+
+- *(control_link)* implement drag-and-drop UI for entity linking
+- *(ci)* add tokei lint checks to crate workflows
+- *(i18n)* add t_args method for localized strings with arguments
+- *(game_view)* add toolbar toggle support for external plugins
+- *(game_view)* add support for external game camera hijacking
+- add configurable toolbar, game view zoom, and menu bar extensions ([#4](https://github.com/Bli-AIk/bevy_workbench/pull/4))
+
+### Fixed
+
+- *(inspector)* wrap inspector UI in catch_unwind to handle reflection panics
+
+### Miscellaneous Tasks
+
+- add clippy configuration
+- *(crates)* add readme and repository fields to Cargo.toml files
+- *(ci)* exclude passing tests from nextest run
+- *(ci)* replace cargo test with cargo-nextest
+
+### Refactor
+
+- extract UI functions to reduce nesting depth
+- *(dock)* sort center panes with game_view last
+
 ## [0.1.0](https://github.com/Bli-AIk/bevy_workbench/compare/v0.0.0...v0.1.0) - 2026-02-28
 
 ### Miscellaneous Tasks

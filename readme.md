@@ -44,7 +44,7 @@ view, and menu bar panels.
 1. **Add to your `Cargo.toml`**:
    ```toml
    [dependencies]
-   bevy_workbench = "0.1"
+   bevy_workbench = "0.2"
    ```
 
 2. **Basic setup**:

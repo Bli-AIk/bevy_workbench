@@ -41,7 +41,7 @@
 1. **添加到 `Cargo.toml`**：
    ```toml
    [dependencies]
-   bevy_workbench = "0.2"
+   bevy_workbench = "0.3"
    ```
 
 2. **基本用法**：

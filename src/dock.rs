@@ -93,6 +93,13 @@ pub trait WorkbenchPanel: Send + Sync + std::any::Any + 'static {
     fn default_visible(&self) -> bool {
         true
     }
+
+    /// Whether this panel appears in the built-in Window menu (default: true).
+    /// Return `false` to hide the panel from the Window menu, useful when the panel
+    /// is managed via a custom top-level menu instead.
+    fn show_in_window_menu(&self) -> bool {
+        true
+    }
 }
 
 /// Identifies a panel in the tile tree.
@@ -380,14 +387,17 @@ impl TileLayoutState {
     }
 
     /// Returns list of (panel_str_id, title, is_visible) for building the Window menu.
+    /// Only includes panels where `show_in_window_menu()` returns `true`.
     pub fn panel_list(&self) -> Vec<(String, String, bool)> {
         let mut result = Vec::new();
         for (str_id, &panel_id) in &self.panel_id_map {
-            let title = self
-                .panels
-                .get(&panel_id)
-                .map(|p| p.title())
-                .unwrap_or_default();
+            let Some(panel) = self.panels.get(&panel_id) else {
+                continue;
+            };
+            if !panel.show_in_window_menu() {
+                continue;
+            }
+            let title = panel.title();
             let visible = self
                 .panel_tile_map
                 .get(&panel_id)

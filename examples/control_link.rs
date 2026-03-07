@@ -105,14 +105,6 @@ impl WorkbenchPanel for ControlLinkPanel {
         // Unused — we use ui_world
     }
 
-    fn default_visible(&self) -> bool {
-        true
-    }
-
-    fn needs_world(&self) -> bool {
-        true
-    }
-
     fn ui_world(&mut self, ui: &mut egui::Ui, world: &mut World) {
         let node_size = egui::vec2(100.0, 36.0);
         let control_color = egui::Color32::from_rgb(255, 180, 50);
@@ -242,6 +234,14 @@ impl WorkbenchPanel for ControlLinkPanel {
         }
 
         world.insert_resource(state);
+    }
+
+    fn needs_world(&self) -> bool {
+        true
+    }
+
+    fn default_visible(&self) -> bool {
+        true
     }
 }
 

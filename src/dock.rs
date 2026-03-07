@@ -7,7 +7,7 @@
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 use bevy_egui::PrimaryEguiContext;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 /// Serializable snapshot of the dock layout.
@@ -152,6 +152,8 @@ pub struct TileLayoutState {
     pub(crate) layout_load_path: Option<std::path::PathBuf>,
     /// Panels requested to open (processed in exclusive system with undo recording).
     pub(crate) pending_open_requests: Vec<String>,
+    /// Panel IDs hidden from the Window menu at runtime (overrides `show_in_window_menu()`).
+    window_menu_hidden: HashSet<String>,
 }
 
 impl TileLayoutState {
@@ -387,14 +389,15 @@ impl TileLayoutState {
     }
 
     /// Returns list of (panel_str_id, title, is_visible) for building the Window menu.
-    /// Only includes panels where `show_in_window_menu()` returns `true`.
+    /// Only includes panels where `show_in_window_menu()` returns `true`
+    /// and not hidden via `hide_from_window_menu()`.
     pub fn panel_list(&self) -> Vec<(String, String, bool)> {
         let mut result = Vec::new();
         for (str_id, &panel_id) in &self.panel_id_map {
             let Some(panel) = self.panels.get(&panel_id) else {
                 continue;
             };
-            if !panel.show_in_window_menu() {
+            if !panel.show_in_window_menu() || self.window_menu_hidden.contains(str_id) {
                 continue;
             }
             let title = panel.title();
@@ -407,6 +410,23 @@ impl TileLayoutState {
         }
         result.sort_by(|a, b| a.1.cmp(&b.1));
         result
+    }
+
+    /// Hide a panel from the built-in Window menu (it can still be managed
+    /// programmatically or via a custom menu).
+    pub fn hide_from_window_menu(&mut self, panel_str_id: &str) {
+        self.window_menu_hidden.insert(panel_str_id.to_string());
+    }
+
+    /// Check whether a panel is currently visible in the layout.
+    pub fn is_panel_visible(&self, panel_str_id: &str) -> bool {
+        let Some(&panel_id) = self.panel_id_map.get(panel_str_id) else {
+            return false;
+        };
+        self.panel_tile_map
+            .get(&panel_id)
+            .and_then(|&tid| self.tree.as_ref().map(|t| t.tiles.get(tid).is_some()))
+            .unwrap_or(false)
     }
 
     /// Get a mutable reference to a panel by its string ID, with downcasting.

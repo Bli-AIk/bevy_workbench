@@ -7,7 +7,7 @@ use crate::dock::{TileLayoutState, WorkbenchPanel};
 use crate::mode::EditorMode;
 use crate::theme::gray;
 
-/// A custom item to inject into the File menu.
+/// A custom item to inject into a menu.
 pub struct MenuExtItem {
     /// Unique identifier for this action (e.g., "open", "save").
     pub id: &'static str,
@@ -17,11 +17,25 @@ pub struct MenuExtItem {
     pub enabled: bool,
 }
 
+/// A custom top-level menu to add to the menu bar.
+pub struct CustomMenu {
+    /// Unique identifier for this menu.
+    pub id: &'static str,
+    /// Display label for the menu button.
+    pub label: String,
+    /// Whether the menu is interactable. When `false`, the menu button is grayed out.
+    pub enabled: bool,
+    /// Items inside this menu.
+    pub items: Vec<MenuExtItem>,
+}
+
 /// Resource for extending the workbench menu bar with custom items.
 #[derive(Resource, Default)]
 pub struct MenuBarExtensions {
     /// Custom items prepended to the File menu (before built-in "Settings").
     pub file_items: Vec<MenuExtItem>,
+    /// Custom top-level menus rendered after built-in menus (File/Edit/View/Window).
+    pub custom_menus: Vec<CustomMenu>,
     /// Info text displayed after all menus (e.g., project title, resolution).
     pub info_text: Option<String>,
 }
@@ -68,6 +82,25 @@ pub fn menu_bar_system(
             ui.menu_button(i18n.t("menu-window"), |ui| {
                 window_menu_ui(ui, &mut tile_state, &panel_list);
             });
+
+            // Custom top-level menus
+            if let Some(ref ext) = extensions {
+                for menu in &ext.custom_menus {
+                    ui.add_enabled_ui(menu.enabled, |ui| {
+                        ui.menu_button(&menu.label, |ui| {
+                            for item in &menu.items {
+                                if ui
+                                    .add_enabled(item.enabled, egui::Button::new(&item.label))
+                                    .clicked()
+                                {
+                                    menu_actions.write(MenuAction { id: item.id });
+                                    ui.close();
+                                }
+                            }
+                        });
+                    });
+                }
+            }
 
             // Extension info text (e.g., project title)
             if let Some(ref ext) = extensions

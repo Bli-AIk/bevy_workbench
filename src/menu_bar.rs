@@ -85,21 +85,7 @@ pub fn menu_bar_system(
 
             // Custom top-level menus
             if let Some(ref ext) = extensions {
-                for menu in &ext.custom_menus {
-                    ui.add_enabled_ui(menu.enabled, |ui| {
-                        ui.menu_button(&menu.label, |ui| {
-                            for item in &menu.items {
-                                if ui
-                                    .add_enabled(item.enabled, egui::Button::new(&item.label))
-                                    .clicked()
-                                {
-                                    menu_actions.write(MenuAction { id: item.id });
-                                    ui.close();
-                                }
-                            }
-                        });
-                    });
-                }
+                custom_menus_ui(ui, &ext.custom_menus, &mut menu_actions);
             }
 
             // Extension info text (e.g., project title)
@@ -408,6 +394,38 @@ fn window_menu_ui(
             } else if !*visible {
                 tile_state.request_open_panel(str_id);
             }
+            ui.close();
+        }
+    }
+}
+
+/// Custom top-level menus, extracted to reduce nesting.
+fn custom_menus_ui(
+    ui: &mut egui::Ui,
+    menus: &[CustomMenu],
+    menu_actions: &mut MessageWriter<MenuAction>,
+) {
+    for menu in menus {
+        ui.add_enabled_ui(menu.enabled, |ui| {
+            ui.menu_button(&menu.label, |ui| {
+                custom_menu_items_ui(ui, &menu.items, menu_actions);
+            });
+        });
+    }
+}
+
+/// Items inside a single custom menu.
+fn custom_menu_items_ui(
+    ui: &mut egui::Ui,
+    items: &[MenuExtItem],
+    menu_actions: &mut MessageWriter<MenuAction>,
+) {
+    for item in items {
+        if ui
+            .add_enabled(item.enabled, egui::Button::new(&item.label))
+            .clicked()
+        {
+            menu_actions.write(MenuAction { id: item.id });
             ui.close();
         }
     }

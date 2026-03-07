@@ -312,28 +312,31 @@ fn edit_menu_ui(
 
 /// View menu content, extracted to reduce nesting.
 fn view_menu_ui(ui: &mut egui::Ui, i18n: &crate::i18n::I18n, tile_state: &mut TileLayoutState) {
-    if ui.button(i18n.t("menu-view-save-layout")).clicked() {
-        if let Some(path) = rfd::FileDialog::new()
-            .set_title(i18n.t("dialog-save-layout"))
-            .add_filter("JSON", &["json"])
-            .set_file_name("layout.json")
-            .save_file()
-        {
-            tile_state.layout_save_path = Some(path);
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if ui.button(i18n.t("menu-view-save-layout")).clicked() {
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title(i18n.t("dialog-save-layout"))
+                .add_filter("JSON", &["json"])
+                .set_file_name("layout.json")
+                .save_file()
+            {
+                tile_state.layout_save_path = Some(path);
+            }
+            ui.close();
         }
-        ui.close();
-    }
-    if ui.button(i18n.t("menu-view-load-layout")).clicked() {
-        if let Some(path) = rfd::FileDialog::new()
-            .set_title(i18n.t("dialog-load-layout"))
-            .add_filter("JSON", &["json"])
-            .pick_file()
-        {
-            tile_state.layout_load_path = Some(path);
+        if ui.button(i18n.t("menu-view-load-layout")).clicked() {
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title(i18n.t("dialog-load-layout"))
+                .add_filter("JSON", &["json"])
+                .pick_file()
+            {
+                tile_state.layout_load_path = Some(path);
+            }
+            ui.close();
         }
-        ui.close();
+        ui.separator();
     }
-    ui.separator();
     if ui.button(i18n.t("menu-view-reset-layout")).clicked() {
         tile_state.layout_reset_requested = true;
         ui.close();
@@ -491,12 +494,17 @@ fn settings_panel_ui(panel: &mut SettingsPanel, ui: &mut egui::Ui) {
 
             ui.label("Custom Font:");
             let display = panel.edited_font_path.as_deref().unwrap_or("(embedded)");
+            #[cfg(not(target_arch = "wasm32"))]
             if ui.button(display).clicked()
                 && let Some(path) = rfd::FileDialog::new()
                     .add_filter("Font", &["otf", "ttf", "ttc"])
                     .pick_file()
             {
                 panel.edited_font_path = Some(path.display().to_string());
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                ui.label(display);
             }
             ui.end_row();
         });

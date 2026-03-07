@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/Bli-AIk/bevy_workbench/compare/v0.2.0...v0.3.0) - 2026-03-07
+
+### Added
+
+- *(workbench)* add extensible settings panel with custom sections
+- *(dock)* add show_in_window_menu method to WorkbenchPanel trait
+
+### Documentation
+
+- *(bevy_workbench)* update readme version references to 0.2
+
+### Refactor
+
+- *(menu_bar)* extract UI functions to reduce nesting
+- *(bevy_workbench)* conditionally compile native-only features
+- *(bevy_workbench)* conditionally compile native-only features
+
 ## [0.2.0](https://github.com/Bli-AIk/bevy_workbench/compare/v0.1.0...v0.2.0) - 2026-03-07
 
 ### Added

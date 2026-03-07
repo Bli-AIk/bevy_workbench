@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/Bli-AIk/bevy_workbench/compare/v0.3.0...v0.3.1) - 2026-03-07
+
+### Added
+
+- *(dock)* add window menu hidden panel support
+
+### Documentation
+
+- *(bevy_workbench)* update readme version references to 0.3
+
 ## [0.3.0](https://github.com/Bli-AIk/bevy_workbench/compare/v0.2.0...v0.3.0) - 2026-03-07
 
 ### Added

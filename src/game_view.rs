@@ -230,142 +230,7 @@ impl WorkbenchPanel for GameViewPanel {
     fn ui(&mut self, _ui: &mut egui::Ui) {}
 
     fn ui_world(&mut self, ui: &mut egui::Ui, world: &mut World) {
-        if !self.is_playing {
-            // Reset focus when not playing
-            if let Some(mut focus) = world.get_resource_mut::<GameViewFocus>() {
-                focus.hovered = false;
-                focus.image_rect = None;
-            }
-            ui.centered_and_justified(|ui| {
-                ui.label(&self.press_play_text);
-            });
-            return;
-        }
-
-        if let Some(tex_id) = self.egui_texture_id {
-            let res = if self.resolution.x > 0 && self.resolution.y > 0 {
-                self.resolution
-            } else {
-                UVec2::new(1280, 720)
-            };
-
-            // Zoom toolbar
-            ui.horizontal(|ui| {
-                let zoom_label = match self.zoom {
-                    ViewZoom::Auto => "Auto".to_string(),
-                    ViewZoom::Fixed(z) => format!("{:.0}%", z * 100.0),
-                };
-                egui::ComboBox::from_id_salt("game_view_zoom")
-                    .selected_text(&zoom_label)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.zoom, ViewZoom::Auto, "Auto");
-                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(0.5), "50%");
-                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(0.75), "75%");
-                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(1.0), "100%");
-                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(1.25), "125%");
-                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(1.5), "150%");
-                        ui.selectable_value(&mut self.zoom, ViewZoom::Fixed(2.0), "200%");
-                    });
-
-                // Custom toolbar toggles
-                if let Some(mut toolbar) = world.get_resource_mut::<GameViewToolbar>() {
-                    for toggle in &mut toolbar.toggles {
-                        let icon = if toggle.enabled { "✅" } else { "⬜" };
-                        if ui
-                            .small_button(format!("{icon} {}", toggle.label))
-                            .clicked()
-                        {
-                            toggle.enabled = !toggle.enabled;
-                        }
-                    }
-                }
-
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.colored_label(gray::S550, format!("{}×{}", res.x, res.y));
-                });
-            });
-
-            ui.separator();
-
-            let available = ui.available_size();
-            let aspect = res.x as f32 / res.y as f32;
-
-            let display_size = match self.zoom {
-                ViewZoom::Auto => {
-                    let w = available.x;
-                    let h = w / aspect;
-                    if h > available.y {
-                        egui::vec2(available.y * aspect, available.y)
-                    } else {
-                        egui::vec2(w, h)
-                    }
-                }
-                ViewZoom::Fixed(z) => egui::vec2(res.x as f32 * z, res.y as f32 * z),
-            };
-
-            let padding = (available - display_size).max(egui::Vec2::ZERO) * 0.5;
-
-            // For fixed zoom that overflows, use a scroll area
-            let response = if matches!(self.zoom, ViewZoom::Fixed(_))
-                && (display_size.x > available.x || display_size.y > available.y)
-            {
-                egui::ScrollArea::both()
-                    .show(ui, |ui| {
-                        ui.image(egui::load::SizedTexture::new(tex_id, display_size))
-                    })
-                    .inner
-            } else {
-                ui.add_space(padding.y);
-                ui.with_layout(
-                    egui::Layout::centered_and_justified(ui.layout().main_dir()),
-                    |ui| ui.image(egui::load::SizedTexture::new(tex_id, display_size)),
-                )
-                .inner
-            };
-
-            // Update focus resource
-            let hovered = response.hovered();
-            let image_rect = response.rect;
-
-            let cursor_viewport_pos = if hovered {
-                ui.ctx().pointer_latest_pos().and_then(|pointer_pos| {
-                    if image_rect.contains(pointer_pos) {
-                        let uv_x = (pointer_pos.x - image_rect.left()) / image_rect.width();
-                        let uv_y = (pointer_pos.y - image_rect.top()) / image_rect.height();
-                        Some(Vec2::new(uv_x * res.x as f32, uv_y * res.y as f32))
-                    } else {
-                        None
-                    }
-                })
-            } else {
-                None
-            };
-
-            if hovered {
-                let painter = ui.painter();
-                painter.rect_stroke(
-                    image_rect,
-                    0.0,
-                    egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 180, 255)),
-                    egui::StrokeKind::Outside,
-                );
-            }
-
-            if let Some(mut focus) = world.get_resource_mut::<GameViewFocus>() {
-                focus.hovered = hovered;
-                focus.image_rect = Some(image_rect);
-                focus.resolution = res;
-                focus.cursor_viewport_pos = cursor_viewport_pos;
-            }
-        } else {
-            if let Some(mut focus) = world.get_resource_mut::<GameViewFocus>() {
-                focus.hovered = false;
-                focus.image_rect = None;
-            }
-            ui.centered_and_justified(|ui| {
-                ui.label("No render target");
-            });
-        }
+        game_view_panel_ui(self, ui, world);
     }
 
     fn needs_world(&self) -> bool {
@@ -374,5 +239,151 @@ impl WorkbenchPanel for GameViewPanel {
 
     fn closable(&self) -> bool {
         false
+    }
+}
+
+/// Renders the game view toolbar (zoom, toggles, resolution).
+fn game_view_toolbar_ui(ui: &mut egui::Ui, zoom: &mut ViewZoom, world: &mut World, res: UVec2) {
+    let zoom_label = match *zoom {
+        ViewZoom::Auto => "Auto".to_string(),
+        ViewZoom::Fixed(z) => format!("{:.0}%", z * 100.0),
+    };
+    egui::ComboBox::from_id_salt("game_view_zoom")
+        .selected_text(&zoom_label)
+        .show_ui(ui, |ui| {
+            ui.selectable_value(zoom, ViewZoom::Auto, "Auto");
+            ui.selectable_value(zoom, ViewZoom::Fixed(0.5), "50%");
+            ui.selectable_value(zoom, ViewZoom::Fixed(0.75), "75%");
+            ui.selectable_value(zoom, ViewZoom::Fixed(1.0), "100%");
+            ui.selectable_value(zoom, ViewZoom::Fixed(1.25), "125%");
+            ui.selectable_value(zoom, ViewZoom::Fixed(1.5), "150%");
+            ui.selectable_value(zoom, ViewZoom::Fixed(2.0), "200%");
+        });
+
+    if let Some(mut toolbar) = world.get_resource_mut::<GameViewToolbar>() {
+        for toggle in &mut toolbar.toggles {
+            let icon = if toggle.enabled { "✅" } else { "⬜" };
+            if ui
+                .small_button(format!("{icon} {}", toggle.label))
+                .clicked()
+            {
+                toggle.enabled = !toggle.enabled;
+            }
+        }
+    }
+
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.colored_label(gray::S550, format!("{}×{}", res.x, res.y));
+    });
+}
+
+/// Computes display size based on zoom mode, resolution, and available space.
+fn compute_display_size(zoom: ViewZoom, res: UVec2, available: egui::Vec2) -> egui::Vec2 {
+    let aspect = res.x as f32 / res.y as f32;
+    match zoom {
+        ViewZoom::Auto => {
+            let w = available.x;
+            let h = w / aspect;
+            if h > available.y {
+                egui::vec2(available.y * aspect, available.y)
+            } else {
+                egui::vec2(w, h)
+            }
+        }
+        ViewZoom::Fixed(z) => egui::vec2(res.x as f32 * z, res.y as f32 * z),
+    }
+}
+
+/// Resets focus state when the game view is not active.
+fn reset_game_view_focus(world: &mut World) {
+    if let Some(mut focus) = world.get_resource_mut::<GameViewFocus>() {
+        focus.hovered = false;
+        focus.image_rect = None;
+    }
+}
+
+/// Main game view panel rendering, extracted to reduce nesting.
+fn game_view_panel_ui(panel: &mut GameViewPanel, ui: &mut egui::Ui, world: &mut World) {
+    if !panel.is_playing {
+        reset_game_view_focus(world);
+        ui.centered_and_justified(|ui| {
+            ui.label(&panel.press_play_text);
+        });
+        return;
+    }
+
+    let Some(tex_id) = panel.egui_texture_id else {
+        reset_game_view_focus(world);
+        ui.centered_and_justified(|ui| {
+            ui.label("No render target");
+        });
+        return;
+    };
+
+    let res = if panel.resolution.x > 0 && panel.resolution.y > 0 {
+        panel.resolution
+    } else {
+        UVec2::new(1280, 720)
+    };
+
+    ui.horizontal(|ui| {
+        game_view_toolbar_ui(ui, &mut panel.zoom, world, res);
+    });
+
+    ui.separator();
+
+    let available = ui.available_size();
+    let display_size = compute_display_size(panel.zoom, res, available);
+    let padding = (available - display_size).max(egui::Vec2::ZERO) * 0.5;
+
+    let response = if matches!(panel.zoom, ViewZoom::Fixed(_))
+        && (display_size.x > available.x || display_size.y > available.y)
+    {
+        egui::ScrollArea::both()
+            .show(ui, |ui| {
+                ui.image(egui::load::SizedTexture::new(tex_id, display_size))
+            })
+            .inner
+    } else {
+        ui.add_space(padding.y);
+        ui.with_layout(
+            egui::Layout::centered_and_justified(ui.layout().main_dir()),
+            |ui| ui.image(egui::load::SizedTexture::new(tex_id, display_size)),
+        )
+        .inner
+    };
+
+    let hovered = response.hovered();
+    let image_rect = response.rect;
+
+    let cursor_viewport_pos = if hovered {
+        ui.ctx().pointer_latest_pos().and_then(|pointer_pos| {
+            if image_rect.contains(pointer_pos) {
+                let uv_x = (pointer_pos.x - image_rect.left()) / image_rect.width();
+                let uv_y = (pointer_pos.y - image_rect.top()) / image_rect.height();
+                Some(Vec2::new(uv_x * res.x as f32, uv_y * res.y as f32))
+            } else {
+                None
+            }
+        })
+    } else {
+        None
+    };
+
+    if hovered {
+        let painter = ui.painter();
+        painter.rect_stroke(
+            image_rect,
+            0.0,
+            egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 180, 255)),
+            egui::StrokeKind::Outside,
+        );
+    }
+
+    if let Some(mut focus) = world.get_resource_mut::<GameViewFocus>() {
+        focus.hovered = hovered;
+        focus.image_rect = Some(image_rect);
+        focus.resolution = res;
+        focus.cursor_viewport_pos = cursor_viewport_pos;
     }
 }

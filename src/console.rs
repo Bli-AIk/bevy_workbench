@@ -313,33 +313,7 @@ impl WorkbenchPanel for ConsolePanel {
             .stick_to_bottom(console.auto_scroll);
 
         scroll.show(ui, |ui| {
-            for entry in &console.logs {
-                // Level filter
-                let show = match entry.level {
-                    LogLevel::Trace | LogLevel::Debug => false,
-                    LogLevel::Info => console.show_info,
-                    LogLevel::Warn => console.show_warn,
-                    LogLevel::Error => console.show_error,
-                };
-                if !show {
-                    continue;
-                }
-
-                // Text filter
-                if !filter_lower.is_empty()
-                    && !entry.message.to_lowercase().contains(&filter_lower)
-                    && !entry.target.to_lowercase().contains(&filter_lower)
-                {
-                    continue;
-                }
-
-                ui.horizontal(|ui| {
-                    let color = entry.level.color();
-                    ui.colored_label(color, entry.level.icon());
-                    ui.colored_label(egui::Color32::DARK_GRAY, format!("[{}]", entry.target));
-                    ui.colored_label(color, &entry.message);
-                });
-            }
+            render_log_entries(ui, &console, &filter_lower);
         });
 
         world.insert_resource(console);
@@ -351,6 +325,33 @@ impl WorkbenchPanel for ConsolePanel {
 
     fn closable(&self) -> bool {
         true
+    }
+}
+
+/// Renders filtered log entries in the scroll area.
+fn render_log_entries(ui: &mut egui::Ui, console: &ConsoleState, filter_lower: &str) {
+    for entry in &console.logs {
+        let show = match entry.level {
+            LogLevel::Trace | LogLevel::Debug => false,
+            LogLevel::Info => console.show_info,
+            LogLevel::Warn => console.show_warn,
+            LogLevel::Error => console.show_error,
+        };
+        if !show {
+            continue;
+        }
+        if !filter_lower.is_empty()
+            && !entry.message.to_lowercase().contains(filter_lower)
+            && !entry.target.to_lowercase().contains(filter_lower)
+        {
+            continue;
+        }
+        ui.horizontal(|ui| {
+            let color = entry.level.color();
+            ui.colored_label(color, entry.level.icon());
+            ui.colored_label(egui::Color32::DARK_GRAY, format!("[{}]", entry.target));
+            ui.colored_label(color, &entry.message);
+        });
     }
 }
 

@@ -185,22 +185,7 @@ impl WorkbenchPanel for ControlLinkPanel {
         if state.dragging && ui.input(|i| i.pointer.any_released()) {
             state.dragging = false;
             if let Some(pointer_pos) = ui.ctx().pointer_latest_pos() {
-                for &(entity, rect) in &object_rects {
-                    if rect.contains(pointer_pos) {
-                        // Unlink previous
-                        if let Some(old) = state.linked_entity.take()
-                            && let Ok(mut e) = world.get_entity_mut(old)
-                        {
-                            e.remove::<common::Controlled>();
-                        }
-                        // Link new
-                        if let Ok(mut e) = world.get_entity_mut(entity) {
-                            e.insert(common::Controlled);
-                        }
-                        state.linked_entity = Some(entity);
-                        break;
-                    }
-                }
+                handle_drop_link(&mut state, world, pointer_pos, &object_rects);
             }
         }
 
@@ -247,18 +232,41 @@ impl WorkbenchPanel for ControlLinkPanel {
         }
 
         // Permanent link line
-        if let Some(linked) = state.linked_entity {
-            for &(entity, rect) in &object_rects {
-                if entity == linked {
-                    painter.line_segment(
-                        [control_rect.right_center(), rect.left_center()],
-                        egui::Stroke::new(2.0, linked_color),
-                    );
-                    break;
-                }
-            }
+        if let Some(linked) = state.linked_entity
+            && let Some(&(_, rect)) = object_rects.iter().find(|&&(e, _)| e == linked)
+        {
+            painter.line_segment(
+                [control_rect.right_center(), rect.left_center()],
+                egui::Stroke::new(2.0, linked_color),
+            );
         }
 
         world.insert_resource(state);
+    }
+}
+
+/// Handles dropping a link onto an object node.
+fn handle_drop_link(
+    state: &mut ControlLinkState,
+    world: &mut World,
+    pointer_pos: egui::Pos2,
+    object_rects: &[(Entity, egui::Rect)],
+) {
+    for &(entity, rect) in object_rects {
+        if !rect.contains(pointer_pos) {
+            continue;
+        }
+        // Unlink previous
+        if let Some(old) = state.linked_entity.take()
+            && let Ok(mut e) = world.get_entity_mut(old)
+        {
+            e.remove::<common::Controlled>();
+        }
+        // Link new
+        if let Ok(mut e) = world.get_entity_mut(entity) {
+            e.insert(common::Controlled);
+        }
+        state.linked_entity = Some(entity);
+        break;
     }
 }

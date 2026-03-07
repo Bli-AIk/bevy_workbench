@@ -201,7 +201,6 @@ impl WorkbenchApp for App {
 /// Assigns PrimaryEguiContext to the first active, window-targeting camera that
 /// doesn't have one yet. Runs every frame until assigned. This replaces bevy_egui's
 /// auto_create_primary_context so the GameViewCamera never steals it.
-#[allow(clippy::type_complexity)]
 fn assign_primary_egui_context_system(
     mut commands: Commands,
     cameras: Query<

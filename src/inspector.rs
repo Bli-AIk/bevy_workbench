@@ -164,126 +164,7 @@ impl WorkbenchPanel for InspectorPanel {
     }
 
     fn ui_world(&mut self, ui: &mut egui::Ui, world: &mut World) {
-        let mut selected = world
-            .remove_resource::<InspectorSelection>()
-            .unwrap_or_default();
-
-        // Pre-fetch translated strings before borrowing world mutably
-        let (s_hierarchy, s_components, s_select_hint) = {
-            let i18n = world.get_resource::<I18n>();
-            let t = |id: &str| i18n.map_or_else(|| id.to_string(), |i| i.t(id));
-            (
-                t("inspector-hierarchy"),
-                t("inspector-components"),
-                t("inspector-select-hint"),
-            )
-        };
-
-        // Two-column layout: hierarchy on left, components on right
-        egui::SidePanel::left("inspector_hierarchy")
-            .resizable(true)
-            .default_width(180.0)
-            .show_inside(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.heading(&s_hierarchy);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.checkbox(&mut selected.show_internal, "🔧");
-                    });
-                });
-                ui.separator();
-                egui::ScrollArea::both().show(ui, |ui| {
-                    let show_internal = selected.show_internal;
-                    let mut hierarchy = Hierarchy {
-                        world,
-                        selected: &mut selected.selected,
-                        context_menu: None,
-                        shortcircuit_entity: None,
-                        extra_state: &mut (),
-                    };
-                    if show_internal {
-                        hierarchy.show::<()>(ui);
-                    } else {
-                        hierarchy.show::<Without<WorkbenchInternal>>(ui);
-                    }
-                });
-            });
-
-        // Right side: selected entity components
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.heading(&s_components);
-            ui.separator();
-            egui::ScrollArea::both().show(ui, |ui| match selected.selected.as_slice() {
-                &[entity] => {
-                    // Entire inspector block wrapped in catch_unwind because
-                    // bevy_reflect panics on types that don't fully implement
-                    // Reflect (e.g. Box<dyn Buttonlike>, unhashable map keys).
-                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        // Inspector undo: track changes
-                        let mut undo_state = world
-                            .remove_resource::<InspectorUndoState>()
-                            .unwrap_or_default();
-
-                        // Take baseline on selection change
-                        if undo_state.tracked_entity != Some(entity) {
-                            undo_state.tracked_entity = Some(entity);
-                            undo_state.baseline = snapshot_entity(world, entity);
-                            undo_state.was_pressing = false;
-                        }
-
-                        let pressing = ui.input(|i| i.pointer.any_pressed());
-
-                        // Render inspector (may modify components)
-                        bevy_inspector::ui_for_entity(world, entity, ui);
-
-                        // On mouse release after pressing, check for changes
-                        if undo_state.was_pressing
-                            && !pressing
-                            && let Some(baseline) = &undo_state.baseline
-                            && let Some(current) = snapshot_entity(world, entity)
-                            && snapshots_differ(baseline, &current)
-                        {
-                            let before = clone_snapshot(baseline);
-                            let desc = format!("Modify entity {entity:?}");
-                            if let Some(mut undo_stack) =
-                                world.get_resource_mut::<crate::undo::UndoStack>()
-                            {
-                                undo_stack.push(InspectorUndoAction {
-                                    entity,
-                                    before,
-                                    after: current,
-                                    desc,
-                                });
-                            }
-                            // Update baseline to current state
-                            undo_state.baseline = snapshot_entity(world, entity);
-                        }
-                        undo_state.was_pressing = pressing;
-
-                        world.insert_resource(undo_state);
-                    }));
-                    if result.is_err() {
-                        ui.colored_label(
-                            egui::Color32::YELLOW,
-                            "⚠ Some components could not be reflected",
-                        );
-                        // Ensure InspectorUndoState resource is restored
-                        if world.get_resource::<InspectorUndoState>().is_none() {
-                            world.insert_resource(InspectorUndoState::default());
-                        }
-                    }
-                }
-                entities if !entities.is_empty() => {
-                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        bevy_inspector::ui_for_entities_shared_components(world, entities, ui);
-                    }));
-                }
-                _ => {
-                    ui.weak(&s_select_hint);
-                }
-            });
-        });
-
-        world.insert_resource(selected);
+        inspector_panel_ui(ui, world);
     }
 
     fn needs_world(&self) -> bool {
@@ -295,9 +176,132 @@ impl WorkbenchPanel for InspectorPanel {
     }
 }
 
+/// Inspector panel UI logic, extracted to reduce nesting depth.
+fn inspector_panel_ui(ui: &mut egui::Ui, world: &mut World) {
+    let mut selected = world
+        .remove_resource::<InspectorSelection>()
+        .unwrap_or_default();
+
+    let (s_hierarchy, s_components, s_select_hint) = {
+        let i18n = world.get_resource::<I18n>();
+        let t = |id: &str| i18n.map_or_else(|| id.to_string(), |i| i.t(id));
+        (
+            t("inspector-hierarchy"),
+            t("inspector-components"),
+            t("inspector-select-hint"),
+        )
+    };
+
+    egui::SidePanel::left("inspector_hierarchy")
+        .resizable(true)
+        .default_width(180.0)
+        .show_inside(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading(&s_hierarchy);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut selected.show_internal, "🔧");
+                });
+            });
+            ui.separator();
+            egui::ScrollArea::both().show(ui, |ui| {
+                let show_internal = selected.show_internal;
+                let mut hierarchy = Hierarchy {
+                    world,
+                    selected: &mut selected.selected,
+                    context_menu: None,
+                    shortcircuit_entity: None,
+                    extra_state: &mut (),
+                };
+                if show_internal {
+                    hierarchy.show::<()>(ui);
+                } else {
+                    hierarchy.show::<Without<WorkbenchInternal>>(ui);
+                }
+            });
+        });
+
+    egui::CentralPanel::default().show_inside(ui, |ui| {
+        ui.heading(&s_components);
+        ui.separator();
+        egui::ScrollArea::both().show(ui, |ui| {
+            inspector_components_ui(ui, world, &selected.selected, &s_select_hint);
+        });
+    });
+
+    world.insert_resource(selected);
+}
+
+/// Renders inspector components for selected entities.
+fn inspector_components_ui(
+    ui: &mut egui::Ui,
+    world: &mut World,
+    selected: &SelectedEntities,
+    s_select_hint: &str,
+) {
+    match selected.as_slice() {
+        &[entity] => inspect_single_entity(ui, world, entity),
+        entities if !entities.is_empty() => {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                bevy_inspector::ui_for_entities_shared_components(world, entities, ui);
+            }));
+        }
+        _ => {
+            ui.weak(s_select_hint);
+        }
+    }
+}
+
+/// Inspects a single entity with undo tracking and panic recovery.
+fn inspect_single_entity(ui: &mut egui::Ui, world: &mut World, entity: Entity) {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut undo_state = world
+            .remove_resource::<InspectorUndoState>()
+            .unwrap_or_default();
+
+        if undo_state.tracked_entity != Some(entity) {
+            undo_state.tracked_entity = Some(entity);
+            undo_state.baseline = snapshot_entity(world, entity);
+            undo_state.was_pressing = false;
+        }
+
+        let pressing = ui.input(|i| i.pointer.any_pressed());
+        bevy_inspector::ui_for_entity(world, entity, ui);
+
+        if undo_state.was_pressing
+            && !pressing
+            && let Some(baseline) = &undo_state.baseline
+            && let Some(current) = snapshot_entity(world, entity)
+            && snapshots_differ(baseline, &current)
+        {
+            let before = clone_snapshot(baseline);
+            let desc = format!("Modify entity {entity:?}");
+            if let Some(mut undo_stack) = world.get_resource_mut::<crate::undo::UndoStack>() {
+                undo_stack.push(InspectorUndoAction {
+                    entity,
+                    before,
+                    after: current,
+                    desc,
+                });
+            }
+            undo_state.baseline = snapshot_entity(world, entity);
+        }
+        undo_state.was_pressing = pressing;
+
+        world.insert_resource(undo_state);
+    }));
+    if result.is_err() {
+        ui.colored_label(
+            egui::Color32::YELLOW,
+            "⚠ Some components could not be reflected",
+        );
+        if world.get_resource::<InspectorUndoState>().is_none() {
+            world.insert_resource(InspectorUndoState::default());
+        }
+    }
+}
+
 /// Marks Bevy-internal entities (Window, Monitor, Pointer, Observer) with
 /// [`WorkbenchInternal`] so the inspector hides them by default.
-#[allow(clippy::type_complexity)]
 pub fn mark_internal_entities_system(
     mut commands: Commands,
     unmarked: Query<

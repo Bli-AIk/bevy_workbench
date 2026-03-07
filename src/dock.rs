@@ -234,13 +234,11 @@ impl TileLayoutState {
         // Sort center panes: non-game_view tabs before game_view (first tab is active by default)
         center_panes.sort_by_key(|tile_id| {
             if let Some(egui_tiles::Tile::Pane(pane)) = tiles.get(*tile_id) {
-                // game_view panels go last
-                let is_game_view = visible_panels
+                visible_panels
                     .iter()
-                    .any(|&(s, pid)| pid == pane.panel_id && s.contains("game_view"));
-                if is_game_view { 1 } else { 0 }
+                    .any(|&(s, pid)| pid == pane.panel_id && s.contains("game_view"))
             } else {
-                0
+                false
             }
         });
 
@@ -279,25 +277,14 @@ impl TileLayoutState {
             } else {
                 let row_id = tiles.insert_horizontal_tile(main_children);
                 // Set shares for horizontal layout
-                if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(linear))) =
-                    tiles.get_mut(row_id)
-                {
-                    for (child, share) in &main_shares {
-                        linear.shares.set_share(*child, *share);
-                    }
-                }
+                set_linear_shares(&mut tiles, row_id, &main_shares);
                 row_id
             };
 
             if let Some(bottom) = bottom_tile {
                 // Vertical split: main row on top, bottom panel below
                 let root_id = tiles.insert_vertical_tile(vec![main_row, bottom]);
-                if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(linear))) =
-                    tiles.get_mut(root_id)
-                {
-                    linear.shares.set_share(main_row, 4.0);
-                    linear.shares.set_share(bottom, 1.0);
-                }
+                set_linear_shares(&mut tiles, root_id, &[(main_row, 4.0), (bottom, 1.0)]);
                 root_id
             } else {
                 main_row
@@ -335,23 +322,13 @@ impl TileLayoutState {
                 // Tile was removed — re-insert the pane entry
                 let new_tile_id = tree.tiles.insert_pane(PaneEntry { panel_id });
                 self.panel_tile_map.insert(panel_id, new_tile_id);
-
-                // Find the root and insert into it
-                if let Some(root_id) = tree.root() {
-                    tree.move_tile_to_container(new_tile_id, root_id, usize::MAX, false);
-                } else {
-                    tree.root = Some(new_tile_id);
-                }
+                insert_pane_into_tree(tree, new_tile_id);
             }
         } else {
             // Panel was never added to tree (default_visible=false) — insert fresh
             let new_tile_id = tree.tiles.insert_pane(PaneEntry { panel_id });
             self.panel_tile_map.insert(panel_id, new_tile_id);
-            if let Some(root_id) = tree.root() {
-                tree.move_tile_to_container(new_tile_id, root_id, usize::MAX, false);
-            } else {
-                tree.root = Some(new_tile_id);
-            }
+            insert_pane_into_tree(tree, new_tile_id);
         }
     }
 
@@ -508,6 +485,30 @@ impl TileLayoutState {
     }
 }
 
+/// Set shares on a linear container tile.
+fn set_linear_shares(
+    tiles: &mut egui_tiles::Tiles<PaneEntry>,
+    tile_id: egui_tiles::TileId,
+    shares: &[(egui_tiles::TileId, f32)],
+) {
+    if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(linear))) =
+        tiles.get_mut(tile_id)
+    {
+        for &(child, share) in shares {
+            linear.shares.set_share(child, share);
+        }
+    }
+}
+
+/// Insert a pane into the tree root, creating a root if needed.
+fn insert_pane_into_tree(tree: &mut egui_tiles::Tree<PaneEntry>, tile_id: egui_tiles::TileId) {
+    if let Some(root_id) = tree.root() {
+        tree.move_tile_to_container(tile_id, root_id, usize::MAX, false);
+    } else {
+        tree.root = Some(tile_id);
+    }
+}
+
 /// Adapter between egui_tiles::Behavior and our WorkbenchPanel system.
 struct WorkbenchBehavior<'a> {
     panels: &'a mut HashMap<PanelId, Box<dyn WorkbenchPanel>>,
@@ -533,12 +534,10 @@ impl egui_tiles::Behavior<PaneEntry> for WorkbenchBehavior<'_> {
         pane: &mut PaneEntry,
     ) -> egui_tiles::UiResponse {
         if let Some(panel) = self.panels.get_mut(&pane.panel_id) {
-            if panel.needs_world() {
-                if let Some(world) = self.world.as_deref_mut() {
-                    panel.ui_world(ui, world);
-                } else {
-                    panel.ui(ui);
-                }
+            if panel.needs_world()
+                && let Some(world) = self.world.as_deref_mut()
+            {
+                panel.ui_world(ui, world);
             } else {
                 panel.ui(ui);
             }
@@ -675,9 +674,7 @@ pub fn tiles_ui_system(world: &mut World) {
             tree.ui(&mut behavior, ui);
 
             for tile_id in behavior.tiles_to_remove {
-                if let Some(str_id) = tile_to_str_id.get(&tile_id) {
-                    closed_panel_ids.push(str_id.clone());
-                }
+                closed_panel_ids.extend(tile_to_str_id.get(&tile_id).cloned());
                 tree.tiles.remove(tile_id);
             }
         });

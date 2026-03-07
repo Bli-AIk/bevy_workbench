@@ -165,14 +165,12 @@ pub fn controlled_movement(
         // Right-click teleport
         if mouse_buttons.just_pressed(MouseButton::Right)
             && let Some(viewport_pos) = game_view.cursor_viewport_pos
+            && let Some(world_pos) = cameras
+                .iter()
+                .find_map(|(camera, ct)| camera.viewport_to_world_2d(ct, viewport_pos).ok())
         {
-            for (camera, camera_transform) in &cameras {
-                if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, viewport_pos) {
-                    tr.translation.x = world_pos.x;
-                    tr.translation.y = world_pos.y;
-                    break;
-                }
-            }
+            tr.translation.x = world_pos.x;
+            tr.translation.y = world_pos.y;
         }
     }
 }

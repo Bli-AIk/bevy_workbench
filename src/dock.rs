@@ -154,6 +154,9 @@ pub struct TileLayoutState {
     pub(crate) pending_open_requests: Vec<String>,
     /// Panel IDs hidden from the Window menu at runtime (overrides `show_in_window_menu()`).
     window_menu_hidden: HashSet<String>,
+    /// Panel IDs that should be hidden in the default layout
+    /// (overrides `default_visible()` when building tree from scratch).
+    default_hidden: HashSet<String>,
 }
 
 impl TileLayoutState {
@@ -218,7 +221,9 @@ impl TileLayoutState {
         let mut visible_panels: Vec<(&str, PanelId)> = self
             .panel_id_map
             .iter()
-            .filter(|(_, pid)| self.panels[pid].default_visible())
+            .filter(|(s, pid)| {
+                self.panels[pid].default_visible() && !self.default_hidden.contains(s.as_str())
+            })
             .map(|(s, pid)| (s.as_str(), *pid))
             .collect();
         visible_panels.sort_by_key(|(s, _)| *s);
@@ -349,12 +354,15 @@ impl TileLayoutState {
     }
 
     /// Close a panel by its string ID.
-    pub fn close_panel(&mut self, panel_str_id: &str) {
+    pub fn close_panel(&mut self, panel_str_id: &str) -> bool {
         let Some(&panel_id) = self.panel_id_map.get(panel_str_id) else {
-            return;
+            return false;
         };
         if let Some(&tile_id) = self.panel_tile_map.get(&panel_id) {
             self.hide_tile(tile_id);
+            true
+        } else {
+            false
         }
     }
 
@@ -418,6 +426,12 @@ impl TileLayoutState {
         self.window_menu_hidden.insert(panel_str_id.to_string());
     }
 
+    /// Mark a panel as hidden in the default layout. This overrides
+    /// `default_visible()` when building the tree from scratch (no saved layout).
+    pub fn set_default_hidden(&mut self, panel_str_id: &str) {
+        self.default_hidden.insert(panel_str_id.to_string());
+    }
+
     /// Check whether a panel is currently visible in the layout.
     pub fn is_panel_visible(&self, panel_str_id: &str) -> bool {
         let Some(&panel_id) = self.panel_id_map.get(panel_str_id) else {
@@ -430,14 +444,24 @@ impl TileLayoutState {
     }
 
     /// Get a mutable reference to a panel by its string ID, with downcasting.
+    /// Also searches pending panels not yet moved into the main map.
     pub fn get_panel_mut<T: WorkbenchPanel + 'static>(
         &mut self,
         panel_str_id: &str,
     ) -> Option<&mut T> {
-        let panel_id = self.panel_id_map.get(panel_str_id)?;
-        let panel = self.panels.get_mut(panel_id)?;
-        // Downcast via Any
-        (panel.as_mut() as &mut dyn std::any::Any).downcast_mut::<T>()
+        // First try the built panels map
+        if let Some(&panel_id) = self.panel_id_map.get(panel_str_id) {
+            if let Some(panel) = self.panels.get_mut(&panel_id) {
+                return (panel.as_mut() as &mut dyn std::any::Any).downcast_mut::<T>();
+            }
+        }
+        // Fall back to pending panels (not yet moved into the map)
+        for pending in &mut self.pending {
+            if pending.panel.id() == panel_str_id {
+                return (pending.panel.as_mut() as &mut dyn std::any::Any).downcast_mut::<T>();
+            }
+        }
+        None
     }
 
     /// Save the current layout to a file (JSON format).

@@ -450,10 +450,10 @@ impl TileLayoutState {
         panel_str_id: &str,
     ) -> Option<&mut T> {
         // First try the built panels map
-        if let Some(&panel_id) = self.panel_id_map.get(panel_str_id) {
-            if let Some(panel) = self.panels.get_mut(&panel_id) {
-                return (panel.as_mut() as &mut dyn std::any::Any).downcast_mut::<T>();
-            }
+        if let Some(&panel_id) = self.panel_id_map.get(panel_str_id)
+            && let Some(panel) = self.panels.get_mut(&panel_id)
+        {
+            return (panel.as_mut() as &mut dyn std::any::Any).downcast_mut::<T>();
         }
         // Fall back to pending panels (not yet moved into the map)
         for pending in &mut self.pending {

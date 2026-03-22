@@ -1,3 +1,18 @@
+//! # keybindings_panel.rs
+//!
+//! # keybindings_panel.rs 文件
+//!
+//! ## Module Overview
+//!
+//! ## 模块概述
+//!
+//! This file implements the keybindings editor panel for `bevy_workbench`. It owns the temporary
+//! recording state for rebinding shortcuts and renders the world-aware UI that lets users inspect,
+//! replace, add, or reset keybind slots.
+//!
+//! 这个文件实现了 `bevy_workbench` 的快捷键编辑面板。它负责管理重新录制快捷键时的临时状态，
+//! 并渲染需要访问 `World` 的 UI，让用户查看、替换、追加或重置各个按键槽位。
+
 use crate::dock::WorkbenchPanel;
 use crate::theme::gray;
 use bevy::prelude::*;

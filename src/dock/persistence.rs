@@ -1,3 +1,18 @@
+//! # persistence.rs
+//!
+//! # persistence.rs 文件
+//!
+//! ## Module Overview
+//!
+//! ## 模块概述
+//!
+//! This file serializes and restores the dock layout used by `bevy_workbench`. It translates the
+//! in-memory tile tree into a stable on-disk snapshot and remaps saved panel ids back onto the
+//! current session's panel registry when a layout is loaded.
+//!
+//! 这个文件负责序列化和恢复 `bevy_workbench` 使用的停靠布局。它会把内存中的 tile 树转换成
+//! 稳定的磁盘快照，并在加载布局时把保存下来的 panel id 重新映射回当前会话的 panel 注册表。
+
 use super::{PaneEntry, PanelId, TileLayoutState};
 use bevy::prelude::*;
 use std::collections::HashMap;

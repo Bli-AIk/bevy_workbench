@@ -1,3 +1,18 @@
+//! # settings_panel.rs
+//!
+//! # settings_panel.rs 文件
+//!
+//! ## Module Overview
+//!
+//! ## 模块概述
+//!
+//! This file defines the settings tab that `bevy_workbench` embeds in its menu system. It stores
+//! the editable UI-facing copies of workbench settings and renders the controls used to tweak
+//! themes, scale, locale, font choice, and application-provided custom sections.
+//!
+//! 这个文件定义了 `bevy_workbench` 菜单系统里的设置面板。它保存面向 UI 的可编辑设置副本，
+//! 并渲染用于调整主题、缩放、语言、字体选择以及应用侧自定义设置区块的控件。
+
 use crate::dock::WorkbenchPanel;
 
 /// Settings panel — displayed as a tab in the tile layout.

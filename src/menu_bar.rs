@@ -10,9 +10,9 @@ use crate::theme::gray;
 mod keybindings_panel;
 mod settings_panel;
 
-pub use settings_panel::{SettingsPanel, SettingsSection};
-pub use keybindings_panel::KeybindingsPanel;
 pub(crate) use keybindings_panel::KeyRecordState;
+pub use keybindings_panel::KeybindingsPanel;
+pub use settings_panel::{SettingsPanel, SettingsSection};
 
 /// A custom item to inject into a menu.
 pub struct MenuExtItem {

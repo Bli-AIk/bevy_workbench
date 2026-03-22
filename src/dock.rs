@@ -459,5 +459,4 @@ impl TileLayoutState {
         }
         None
     }
-
 }

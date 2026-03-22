@@ -29,7 +29,9 @@ impl WorkbenchPanel for KeybindingsPanel {
         let mut bindings = world
             .remove_resource::<crate::keybind::KeyBindings>()
             .unwrap_or_default();
-        let mut record_state = world.remove_resource::<KeyRecordState>().unwrap_or_default();
+        let mut record_state = world
+            .remove_resource::<KeyRecordState>()
+            .unwrap_or_default();
 
         handle_key_recording(world, &mut record_state, &mut bindings);
 

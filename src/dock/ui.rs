@@ -6,11 +6,11 @@
 //!
 //! ## 模块概述
 //!
-//! This file renders and mutates the workbench dock UI. It bridges `egui_tiles` with Bevy `World`
+//! Renders and mutates the workbench dock UI. It bridges `egui_tiles` with Bevy `World`
 //! access, handles tab closing and layout undo snapshots, and turns pending panel-open requests
 //! into concrete changes in the tile tree.
 //!
-//! 这个文件负责渲染并更新 workbench 的停靠式 UI。它把 `egui_tiles` 与 Bevy `World`
+//! 负责渲染并更新 workbench 的停靠式 UI。它把 `egui_tiles` 与 Bevy `World`
 //! 访问连接起来，处理标签页关闭和布局撤销快照，并把待打开的面板请求落实为 tile 树上的具体变更。
 
 use super::{LayoutUndoAction, PaneEntry, PanelId, TileLayoutState, WorkbenchPanel};

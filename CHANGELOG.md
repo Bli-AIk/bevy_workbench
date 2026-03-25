@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/Bli-AIk/bevy_workbench/compare/v0.3.1...v0.3.2) - 2026-03-25
+
+### Documentation
+
+- tighten file header comments
+- *(workbench)* add bilingual module docs
+
+### Miscellaneous Tasks
+
+- *(ci)* fix formatting regressions
+- *(lint)* enforce dual tokei thresholds
+- *(lint)* improve #[expect] reason detection in tokei scripts
+
+### Refactor
+
+- *(ui)* split dock and menu modules
+- *(dock)* simplify panel lookup with conditional let
+
 ## [0.3.1](https://github.com/Bli-AIk/bevy_workbench/compare/v0.3.0...v0.3.1) - 2026-03-07
 
 ### Added

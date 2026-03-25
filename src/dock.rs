@@ -4,18 +4,14 @@
 //! - Root: Vertical split (main area + bottom console)
 //! - Main area: Horizontal split (game view + right inspector)
 
-use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
-use bevy_egui::PrimaryEguiContext;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
-/// Serializable snapshot of the dock layout.
-#[derive(serde::Serialize, serde::Deserialize)]
-struct LayoutData {
-    tree: egui_tiles::Tree<PaneEntry>,
-    panel_names: HashMap<PanelId, String>,
-}
+mod persistence;
+mod ui;
+
+pub use ui::{LayoutPath, tiles_ui_system};
 
 /// Snapshot of the layout for undo/redo (tree + tile mapping).
 #[derive(Clone)]
@@ -291,14 +287,14 @@ impl TileLayoutState {
             } else {
                 let row_id = tiles.insert_horizontal_tile(main_children);
                 // Set shares for horizontal layout
-                set_linear_shares(&mut tiles, row_id, &main_shares);
+                ui::set_linear_shares(&mut tiles, row_id, &main_shares);
                 row_id
             };
 
             if let Some(bottom) = bottom_tile {
                 // Vertical split: main row on top, bottom panel below
                 let root_id = tiles.insert_vertical_tile(vec![main_row, bottom]);
-                set_linear_shares(&mut tiles, root_id, &[(main_row, 4.0), (bottom, 1.0)]);
+                ui::set_linear_shares(&mut tiles, root_id, &[(main_row, 4.0), (bottom, 1.0)]);
                 root_id
             } else {
                 main_row
@@ -336,13 +332,13 @@ impl TileLayoutState {
                 // Tile was removed — re-insert the pane entry
                 let new_tile_id = tree.tiles.insert_pane(PaneEntry { panel_id });
                 self.panel_tile_map.insert(panel_id, new_tile_id);
-                insert_pane_into_tree(tree, new_tile_id);
+                ui::insert_pane_into_tree(tree, new_tile_id);
             }
         } else {
             // Panel was never added to tree (default_visible=false) — insert fresh
             let new_tile_id = tree.tiles.insert_pane(PaneEntry { panel_id });
             self.panel_tile_map.insert(panel_id, new_tile_id);
-            insert_pane_into_tree(tree, new_tile_id);
+            ui::insert_pane_into_tree(tree, new_tile_id);
         }
     }
 
@@ -462,323 +458,5 @@ impl TileLayoutState {
             }
         }
         None
-    }
-
-    /// Save the current layout to a file (JSON format).
-    pub fn save_layout(&self, path: &std::path::Path) {
-        let Some(tree) = &self.tree else { return };
-        // Build reverse map: panel_id → str_id
-        let id_to_str: HashMap<PanelId, String> = self
-            .panel_id_map
-            .iter()
-            .map(|(s, &id)| (id, s.clone()))
-            .collect();
-        let data = LayoutData {
-            tree: tree.clone(),
-            panel_names: id_to_str,
-        };
-        let content = serde_json::to_string_pretty(&data).expect("serialize layout");
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if let Err(e) = std::fs::write(path, content) {
-            warn!("Failed to save layout to {}: {e}", path.display());
-        }
-    }
-
-    /// Load layout from a JSON file. Returns true if successful.
-    /// Must be called after all panels are registered but before the tree is built.
-    pub fn load_layout(&mut self, path: &std::path::Path) -> bool {
-        let content = match std::fs::read_to_string(path) {
-            Ok(c) => c,
-            Err(_) => return false,
-        };
-        let data: LayoutData = match serde_json::from_str(&content) {
-            Ok(d) => d,
-            Err(e) => {
-                warn!("Failed to parse layout {}: {e}", path.display());
-                return false;
-            }
-        };
-
-        // Remap panel IDs: saved names → current IDs
-        let mut name_to_current_id: HashMap<String, PanelId> = HashMap::new();
-        for (str_id, &current_id) in &self.panel_id_map {
-            name_to_current_id.insert(str_id.clone(), current_id);
-        }
-
-        // Build old_id → new_id mapping
-        let mut id_remap: HashMap<PanelId, PanelId> = HashMap::new();
-        for (old_id, name) in &data.panel_names {
-            if let Some(&new_id) = name_to_current_id.get(name) {
-                id_remap.insert(*old_id, new_id);
-            }
-        }
-
-        // Clone and remap the tree
-        let mut tree = data.tree;
-        for tile in tree.tiles.tiles_mut() {
-            if let egui_tiles::Tile::Pane(pane) = tile
-                && let Some(&new_id) = id_remap.get(&pane.panel_id)
-            {
-                pane.panel_id = new_id;
-            }
-        }
-
-        // Rebuild panel_tile_map
-        self.panel_tile_map.clear();
-        for (&tile_id, tile) in tree.tiles.iter() {
-            if let egui_tiles::Tile::Pane(pane) = tile {
-                self.panel_tile_map.insert(pane.panel_id, tile_id);
-            }
-        }
-
-        self.tree = Some(tree);
-        self.tree_built = true;
-        true
-    }
-}
-
-/// Set shares on a linear container tile.
-fn set_linear_shares(
-    tiles: &mut egui_tiles::Tiles<PaneEntry>,
-    tile_id: egui_tiles::TileId,
-    shares: &[(egui_tiles::TileId, f32)],
-) {
-    if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(linear))) =
-        tiles.get_mut(tile_id)
-    {
-        for &(child, share) in shares {
-            linear.shares.set_share(child, share);
-        }
-    }
-}
-
-/// Insert a pane into the tree root, creating a root if needed.
-fn insert_pane_into_tree(tree: &mut egui_tiles::Tree<PaneEntry>, tile_id: egui_tiles::TileId) {
-    if let Some(root_id) = tree.root() {
-        tree.move_tile_to_container(tile_id, root_id, usize::MAX, false);
-    } else {
-        tree.root = Some(tile_id);
-    }
-}
-
-/// Adapter between egui_tiles::Behavior and our WorkbenchPanel system.
-struct WorkbenchBehavior<'a> {
-    panels: &'a mut HashMap<PanelId, Box<dyn WorkbenchPanel>>,
-    /// World access for panels that need it (inspector, etc.).
-    world: Option<&'a mut World>,
-    /// Tile IDs to remove from the tree after the UI pass.
-    tiles_to_remove: Vec<egui_tiles::TileId>,
-}
-
-impl egui_tiles::Behavior<PaneEntry> for WorkbenchBehavior<'_> {
-    fn tab_title_for_pane(&mut self, pane: &PaneEntry) -> egui::WidgetText {
-        self.panels
-            .get(&pane.panel_id)
-            .map(|p| p.title())
-            .unwrap_or_else(|| "Unknown".to_string())
-            .into()
-    }
-
-    fn pane_ui(
-        &mut self,
-        ui: &mut egui::Ui,
-        _tile_id: egui_tiles::TileId,
-        pane: &mut PaneEntry,
-    ) -> egui_tiles::UiResponse {
-        if let Some(panel) = self.panels.get_mut(&pane.panel_id) {
-            if panel.needs_world()
-                && let Some(world) = self.world.as_deref_mut()
-            {
-                panel.ui_world(ui, world);
-            } else {
-                panel.ui(ui);
-            }
-        }
-        egui_tiles::UiResponse::None
-    }
-
-    fn is_tab_closable(
-        &self,
-        _tiles: &egui_tiles::Tiles<PaneEntry>,
-        _tile_id: egui_tiles::TileId,
-    ) -> bool {
-        true
-    }
-
-    fn on_tab_close(
-        &mut self,
-        _tiles: &mut egui_tiles::Tiles<PaneEntry>,
-        tile_id: egui_tiles::TileId,
-    ) -> bool {
-        self.tiles_to_remove.push(tile_id);
-        true // return true = remove the tile from its parent
-    }
-
-    fn on_tab_button(
-        &mut self,
-        _tiles: &egui_tiles::Tiles<PaneEntry>,
-        tile_id: egui_tiles::TileId,
-        button_response: egui::Response,
-    ) -> egui::Response {
-        // Right-click context menu
-        button_response.context_menu(|ui| {
-            if ui.button("Close").clicked() {
-                self.tiles_to_remove.push(tile_id);
-                ui.close();
-            }
-        });
-        button_response
-    }
-
-    fn simplification_options(&self) -> egui_tiles::SimplificationOptions {
-        egui_tiles::SimplificationOptions {
-            all_panes_must_have_tabs: true,
-            ..Default::default()
-        }
-    }
-}
-
-/// Resource holding the layout file path.
-#[derive(Resource)]
-pub struct LayoutPath(pub std::path::PathBuf);
-
-impl Default for LayoutPath {
-    fn default() -> Self {
-        Self(std::path::PathBuf::from(".workbench/layout.json"))
-    }
-}
-
-/// Exclusive system that renders the tile layout with World access for panels.
-pub fn tiles_ui_system(world: &mut World) {
-    // Phase 1: Build tree & handle save/load/reset
-    world.resource_scope(|world, mut state: Mut<TileLayoutState>| {
-        let layout_path = world.resource::<LayoutPath>();
-        state.build_tree(Some(&layout_path.0));
-
-        if let Some(path) = state.layout_save_path.take() {
-            state.save_layout(&path);
-            info!("Layout saved to {}", path.display());
-        }
-        if let Some(path) = state.layout_load_path.take()
-            && state.load_layout(&path)
-        {
-            info!("Layout loaded from {}", path.display());
-        }
-        if state.layout_reset_requested {
-            state.layout_reset_requested = false;
-            let before = state.snapshot();
-            state.tree = None;
-            state.panel_tile_map.clear();
-            state.build_default_tree();
-            let after = state.snapshot();
-            let _ = std::fs::remove_file(&layout_path.0);
-            info!("Layout reset to default");
-
-            // Record undo for layout reset
-            if let (Some(before), Some(after)) = (before, after)
-                && let Some(mut undo_stack) = world.get_resource_mut::<crate::undo::UndoStack>()
-            {
-                undo_stack.push(LayoutUndoAction::new("Reset layout", before, after));
-            }
-        }
-    });
-
-    // Phase 2: Get egui context (clone is cheap — Arc internally)
-    let ctx = {
-        let mut sys =
-            SystemState::<Query<&mut bevy_egui::EguiContext, With<PrimaryEguiContext>>>::new(world);
-        let mut query = sys.get_mut(world);
-        let Ok(mut egui_ctx) = query.single_mut() else {
-            return;
-        };
-        let ctx = egui_ctx.get_mut().clone();
-        sys.apply(world);
-        ctx
-    };
-
-    // Phase 3: Snapshot layout BEFORE extracting tree (for close undo)
-    let before_snapshot = {
-        let state = world.resource::<TileLayoutState>();
-        state.snapshot()
-    };
-
-    // Build reverse map before world is borrowed by behavior
-    let tile_to_str_id = {
-        let state = world.resource::<TileLayoutState>();
-        state.tile_to_panel_str_id_map()
-    };
-
-    // Temporarily take tree+panels out of resource so we can pass &mut World
-    let (mut tree, mut panels) = {
-        let mut state = world.resource_mut::<TileLayoutState>();
-        (state.tree.take(), std::mem::take(&mut state.panels))
-    };
-
-    let mut closed_panel_ids: Vec<String> = Vec::new();
-
-    if let Some(ref mut tree) = tree {
-        egui::CentralPanel::default().show(&ctx, |ui| {
-            let mut behavior = WorkbenchBehavior {
-                panels: &mut panels,
-                world: Some(world),
-                tiles_to_remove: Vec::new(),
-            };
-            tree.ui(&mut behavior, ui);
-
-            for tile_id in behavior.tiles_to_remove {
-                closed_panel_ids.extend(tile_to_str_id.get(&tile_id).cloned());
-                tree.tiles.remove(tile_id);
-            }
-        });
-    }
-
-    // Phase 4: Put tree+panels back
-    let mut state = world.resource_mut::<TileLayoutState>();
-    state.tree = tree;
-    state.panels = panels;
-
-    // Record undo action with layout snapshots for closed panels
-    if !closed_panel_ids.is_empty() {
-        let after_snapshot = state.snapshot();
-        if let (Some(before), Some(after)) = (before_snapshot.clone(), after_snapshot) {
-            let desc = format!("Close {}", closed_panel_ids.join(", "));
-            // Release state borrow before accessing undo_stack
-            let _ = state;
-            if let Some(mut undo_stack) = world.get_resource_mut::<crate::undo::UndoStack>() {
-                undo_stack.push(LayoutUndoAction::new(desc, before, after));
-            }
-        }
-    }
-
-    // Phase 5: Process pending open requests with undo recording
-    let pending_opens = {
-        let mut state = world.resource_mut::<TileLayoutState>();
-        std::mem::take(&mut state.pending_open_requests)
-    };
-    if !pending_opens.is_empty() {
-        let open_before = {
-            let state = world.resource::<TileLayoutState>();
-            state.snapshot()
-        };
-        {
-            let mut state = world.resource_mut::<TileLayoutState>();
-            for str_id in &pending_opens {
-                state.open_or_focus_panel(str_id);
-            }
-        }
-
-        let open_after = {
-            let state = world.resource::<TileLayoutState>();
-            state.snapshot()
-        };
-
-        if let (Some(before), Some(after)) = (open_before, open_after) {
-            let desc = format!("Open {}", pending_opens.join(", "));
-            if let Some(mut undo_stack) = world.get_resource_mut::<crate::undo::UndoStack>() {
-                undo_stack.push(LayoutUndoAction::new(desc, before, after));
-            }
-        }
     }
 }

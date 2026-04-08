@@ -4,6 +4,7 @@
 //! and controlling entities via WASD/right-click.
 
 use bevy::prelude::*;
+use bevy::sprite_render::{ColorMaterial, MeshMaterial2d};
 use bevy::state::prelude::DespawnOnEnter;
 use bevy_workbench::prelude::*;
 

@@ -52,4 +52,10 @@ sys-locale = "0.3"
 rfd = "0.17"
 
 [dev-dependencies]
-bevy = { version = "0.18", default-features = false, features = ["bevy_winit", "default_font", "x11"] }
+bevy = { version = "0.18", default-features = false, features = [
+    "bevy_winit",
+    "bevy_sprite",
+    "bevy_sprite_render",
+    "default_font",
+    "x11",
+] }

@@ -66,6 +66,10 @@ impl egui_tiles::Behavior<PaneEntry> for WorkbenchBehavior<'_> {
         pane: &mut PaneEntry,
     ) -> egui_tiles::UiResponse {
         if let Some(panel) = self.panels.get_mut(&pane.panel_id) {
+            // Draw tile background from panel's bg_color (None = transparent for 3D scene)
+            if let Some(color) = panel.bg_color() {
+                ui.painter().rect_filled(ui.max_rect(), 0.0, color);
+            }
             if panel.needs_world()
                 && let Some(world) = self.world.as_deref_mut()
             {
@@ -190,7 +194,10 @@ pub fn tiles_ui_system(world: &mut World) {
     let mut closed_panel_ids: Vec<String> = Vec::new();
 
     if let Some(ref mut tree) = tree {
-        egui::CentralPanel::default().show(&ctx, |ui| {
+        // Transparent CentralPanel — lets 3D scene show through behind tiles
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE)
+            .show(&ctx, |ui| {
             let mut behavior = WorkbenchBehavior {
                 panels: &mut panels,
                 world: Some(world),

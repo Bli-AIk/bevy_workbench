@@ -80,6 +80,11 @@ pub trait WorkbenchPanel: Send + Sync + std::any::Any + 'static {
         false
     }
 
+    /// Background color for this panel's tile. Return `None` for transparent.
+    fn bg_color(&self) -> Option<egui::Color32> {
+        Some(egui::Color32::from_rgb(35, 35, 40))
+    }
+
     /// Whether the panel tab can be closed (default: true).
     fn closable(&self) -> bool {
         true

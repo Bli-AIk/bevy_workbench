@@ -305,7 +305,7 @@ impl TileLayoutState {
             if let Some(bottom) = bottom_tile {
                 // Vertical split: main row on top, bottom panel below
                 let root_id = tiles.insert_vertical_tile(vec![main_row, bottom]);
-                ui::set_linear_shares(&mut tiles, root_id, &[(main_row, 4.0), (bottom, 1.0)]);
+                ui::set_linear_shares(&mut tiles, root_id, &[(main_row, 10.0), (bottom, 1.0)]);
                 root_id
             } else {
                 main_row

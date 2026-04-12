@@ -115,7 +115,7 @@ impl egui_tiles::Behavior<PaneEntry> for WorkbenchBehavior<'_> {
 
     fn simplification_options(&self) -> egui_tiles::SimplificationOptions {
         egui_tiles::SimplificationOptions {
-            all_panes_must_have_tabs: true,
+            all_panes_must_have_tabs: false,
             ..Default::default()
         }
     }

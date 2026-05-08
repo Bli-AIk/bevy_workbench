@@ -80,6 +80,17 @@ pub trait WorkbenchPanel: Send + Sync + std::any::Any + 'static {
         false
     }
 
+    /// Background color for this panel's tile. Return `None` for transparent.
+    fn bg_color(&self) -> Option<egui::Color32> {
+        Some(egui::Color32::from_rgb(35, 35, 40))
+    }
+
+    /// Whether to hide the tab bar for this panel.
+    /// Use for panels that act as a viewport (e.g., 3D scene) rather than a tool.
+    fn hide_tab(&self) -> bool {
+        false
+    }
+
     /// Whether the panel tab can be closed (default: true).
     fn closable(&self) -> bool {
         true
@@ -252,26 +263,26 @@ impl TileLayoutState {
             }
         });
 
-        // Build tab containers for each slot (always with tab headers for drag support)
-        let left_tile = Self::make_tab(&mut tiles, left_panes);
-        let center_tile = Self::make_tab(&mut tiles, center_panes);
-        let right_tile = Self::make_tab(&mut tiles, right_panes);
+        // Build tile containers for each slot
+        let left_tiles = self.make_tile(&mut tiles, left_panes);
+        let center_tiles = self.make_tile(&mut tiles, center_panes);
+        let right_tiles = self.make_tile(&mut tiles, right_panes);
         let bottom_tile = Self::make_tab(&mut tiles, bottom_panes);
 
         // Build main horizontal row: [left? | center | right?]
         let mut main_children = Vec::new();
         let mut main_shares = Vec::new();
-        if let Some(left) = left_tile {
-            main_children.push(left);
-            main_shares.push((left, 1.0));
+        for tile in left_tiles {
+            main_children.push(tile);
+            main_shares.push((tile, 1.0));
         }
-        if let Some(center) = center_tile {
-            main_children.push(center);
-            main_shares.push((center, 4.0)); // center takes most space
+        for tile in center_tiles {
+            main_children.push(tile);
+            main_shares.push((tile, 4.0));
         }
-        if let Some(right) = right_tile {
-            main_children.push(right);
-            main_shares.push((right, 1.5));
+        for tile in right_tiles {
+            main_children.push(tile);
+            main_shares.push((tile, 1.5));
         }
 
         let root = if main_children.is_empty() && bottom_tile.is_none() {
@@ -294,7 +305,7 @@ impl TileLayoutState {
             if let Some(bottom) = bottom_tile {
                 // Vertical split: main row on top, bottom panel below
                 let root_id = tiles.insert_vertical_tile(vec![main_row, bottom]);
-                ui::set_linear_shares(&mut tiles, root_id, &[(main_row, 4.0), (bottom, 1.0)]);
+                ui::set_linear_shares(&mut tiles, root_id, &[(main_row, 10.0), (bottom, 1.0)]);
                 root_id
             } else {
                 main_row
@@ -311,9 +322,41 @@ impl TileLayoutState {
         if panes.is_empty() {
             None
         } else {
-            // Always wrap in a tab container so every slot has a draggable tab header.
             Some(tiles.insert_tab_tile(panes))
         }
+    }
+
+    /// Build tab containers for panels that show tabs.
+    /// Panels with `hide_tab()` are inserted as plain panes (no tab bar).
+    fn make_tile(
+        &self,
+        tiles: &mut egui_tiles::Tiles<PaneEntry>,
+        panes: Vec<egui_tiles::TileId>,
+    ) -> Vec<egui_tiles::TileId> {
+        if panes.is_empty() {
+            return Vec::new();
+        }
+
+        // Separate hidden-tab panels from tabbed panels
+        let mut hidden: Vec<egui_tiles::TileId> = Vec::new();
+        let mut tabbed: Vec<egui_tiles::TileId> = Vec::new();
+
+        for tile_id in panes {
+            if let Some(egui_tiles::Tile::Pane(pane)) = tiles.get(tile_id) {
+                if self.panels.get(&pane.panel_id).map_or(false, |p| p.hide_tab()) {
+                    hidden.push(tile_id);
+                    continue;
+                }
+            }
+            tabbed.push(tile_id);
+        }
+
+        // Wrap tabbed panes in a tab container
+        let mut result = hidden;
+        if !tabbed.is_empty() {
+            result.push(tiles.insert_tab_tile(tabbed));
+        }
+        result
     }
 
     /// Focus an existing panel tab by its string ID, re-inserting if closed.

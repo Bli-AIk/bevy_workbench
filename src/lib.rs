@@ -247,6 +247,13 @@ fn assign_primary_egui_context_system(
             commands.entity(entity).insert((
                 bevy_egui::EguiContext::default(),
                 bevy_egui::PrimaryEguiContext,
+                // Disable egui pointer capture so that gizmo picking
+                // (transform-gizmo-bevy) can receive pointer events in
+                // areas not covered by interactive egui widgets.
+                bevy_egui::EguiContextSettings {
+                    capture_pointer_input: false,
+                    ..default()
+                },
                 Name::new("workbench_ui_camera"),
                 inspector::WorkbenchInternal,
             ));
